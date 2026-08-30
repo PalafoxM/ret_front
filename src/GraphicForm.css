@@ -1,0 +1,18 @@
+.graphic-list { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+.graphic-card { display: grid; grid-template-columns: 118px minmax(0, 1fr); gap: 15px; align-items: center; padding: 13px; border: 1px solid #d4ded7; border-radius: 13px; background: #fbfcfb; }
+.graphic-card > img, .graphic-placeholder { width: 118px; height: 100px; border-radius: 9px; object-fit: cover; background: #eaf0ec; }
+.graphic-placeholder { display: grid; place-items: center; color: #779084; font-size: 26px; }
+.graphic-card > div:last-child { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.graphic-card strong { color: #243d31; font-size: 12px; }
+.graphic-card strong b { color: #dc3946; }
+.graphic-card small { min-height: 28px; color: #708078; font-size: 9px; line-height: 1.45; }
+.graphic-card label { position: relative; display: inline-grid; place-items: center; max-width: 100%; min-height: 35px; margin: 0; padding: 0 12px; overflow: hidden; border: 1px solid #84a494; border-radius: 8px; background: #eff7f2; color: #27674a; font-size: 9px; font-weight: 750; cursor: pointer; }
+.graphic-card label:hover { border-color: #26724e; background: #e3f2e9; }
+.graphic-card input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.graphic-card label span { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.promotion-consent { display: flex; align-items: flex-start; gap: 11px; margin: 0; padding: 16px; border: 1px solid #d3ddd6; border-radius: 11px; background: #f6f9f7; color: #465a50; font-size: 11px; font-weight: 600; line-height: 1.55; cursor: pointer; }
+.promotion-consent input { flex: 0 0 auto; width: 17px; height: 17px; margin-top: 1px; accent-color: #176d48; }
+.promotion-consent b { color: #d33542; }
+.promotion-consent:has(input:checked) { border-color: #69a486; background: #f0f8f3; }
+@media (max-width: 900px) { .graphic-list { grid-template-columns: 1fr; } }
+@media (max-width: 500px) { .graphic-card { grid-template-columns: 90px minmax(0, 1fr); } .graphic-card > img, .graphic-placeholder { width: 90px; height: 90px; } }

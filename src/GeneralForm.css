@@ -1,0 +1,33 @@
+.form-loading { min-height: 320px; display: grid; place-items: center; color: #64736b; font-size: 13px; }
+.general-form { display: grid; gap: 20px; }
+.general-section { display: grid; gap: 16px; }
+.general-section > header { display: flex; align-items: center; gap: 11px; padding: 12px 15px; border-radius: 12px; background: linear-gradient(120deg, #1858b7, #1672ed); color: #fff; }
+.general-section > header > span { display: grid; place-items: center; width: 34px; height: 34px; flex: 0 0 34px; border-radius: 9px; background: #ffffff24; font-size: 16px; }
+.general-section > header div { display: flex; flex-direction: column; gap: 2px; }
+.general-section > header strong { font-size: 13px; }
+.general-section > header small { color: #e6efff; font-size: 9px; }
+.general-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.general-grid label, .cert-grid > label, .description-field { display: flex; flex-direction: column; gap: 7px; margin: 0; color: #284035; font-size: 11px; font-weight: 750; }
+.general-grid .wide { grid-column: 1 / -1; }
+.general-grid input, .general-grid select, .cert-grid input[type="text"], .cert-grid > label > input:not([type="checkbox"]), .description-field textarea { width: 100%; min-height: 45px; padding: 0 13px; border: 1px solid #cfdad3; border-radius: 10px; outline: 0; background: #fff; color: #263f34; font: 500 12px inherit; }
+.general-grid input[readonly] { background: #eef3f5; color: #5e7067; }
+.general-grid input:focus, .general-grid select:focus, .cert-grid input:focus, .description-field textarea:focus { border-color: #197148; box-shadow: 0 0 0 3px #19714815; }
+.general-grid input:required:invalid:not(:placeholder-shown), .description-field textarea:required:invalid:not(:placeholder-shown) { border-color: #df414d; }
+.cert-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 11px; }
+.cert-option { min-height: 43px; flex-direction: row !important; align-items: center; padding: 0 12px; border: 1px solid #d2ddd6; border-radius: 10px; background: #f7faf8; color: #26704d !important; cursor: pointer; }
+.cert-option input { width: 15px; height: 15px; margin: 0; accent-color: #18724b; }
+.description-field textarea { min-height: 105px; padding: 12px; resize: vertical; }
+.map-help { margin: -5px 0 0; color: #68776f; font-size: 11px; }
+.form-map { height: 310px; overflow: hidden; border: 1px solid #cfd9d2; border-radius: 14px; }
+.form-map .leaflet-container { width: 100%; height: 100%; }
+.coordinate-row { display: flex; gap: 15px; color: #718078; font: 11px ui-monospace, Consolas, monospace; }
+.general-message { margin: 0; padding: 12px 15px; border-radius: 10px; background: #eef5f0; color: #346149; font-size: 12px; text-align: center; }
+.save-general { display: flex; align-items: center; justify-content: center; gap: 13px; min-height: 52px; border: 0; border-radius: 11px; background: #f26a21; color: #fff; font: 750 13px inherit; cursor: pointer; box-shadow: 0 10px 24px #f26a2130; }
+.save-general:hover { background: #dc5917; }
+.save-general:disabled { opacity: .65; cursor: wait; }
+.legal-declarations { display: grid; gap: 11px; }
+.legal-declarations label { display: flex; align-items: flex-start; gap: 11px; margin: 0; padding: 15px 16px; border: 1px solid #d3ddd6; border-radius: 11px; background: #f6f9f7; color: #465a50; font-size: 11px; font-weight: 600; line-height: 1.55; cursor: pointer; }
+.legal-declarations input { flex: 0 0 auto; width: 17px; height: 17px; margin-top: 1px; accent-color: #176d48; }
+.legal-declarations b { color: #d33542; }
+.legal-declarations label:has(input:checked) { border-color: #69a486; background: #f0f8f3; }
+@media (max-width: 650px) { .general-grid, .cert-grid { grid-template-columns: 1fr; } .general-grid .wide { grid-column: 1; } .form-map { height: 260px; } .coordinate-row { flex-direction: column; gap: 3px; } }

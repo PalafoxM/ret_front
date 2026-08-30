@@ -1,0 +1,17 @@
+.experience-questions { display: grid; gap: 22px; }
+.rating-field { display: grid; gap: 10px; margin: 0; padding: 0 0 20px; border: 0; border-bottom: 1px solid var(--ret-line); }
+.rating-field legend { margin-bottom: 4px; color: var(--ret-text); font-size: 13px; font-weight: 800; }
+.star-rating { display: flex; flex-direction: row-reverse; justify-content: flex-end; gap: 5px; }
+.star-rating label { position: relative; margin: 0; cursor: pointer; }
+.star-rating input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.star-rating label > span:first-of-type { color: #cbd9dd; font-size: 36px; line-height: 1; transition: color .15s, transform .15s; }
+.star-rating label:hover > span:first-of-type, .star-rating label:hover ~ label > span:first-of-type,
+.star-rating input:checked ~ span:first-of-type, .star-rating label:has(input:checked) ~ label > span:first-of-type { color: var(--ret-cyan); }
+.star-rating label:hover > span:first-of-type { transform: scale(1.12); }
+.star-rating input:focus-visible ~ span:first-of-type { outline: 3px solid #00abc83b; outline-offset: 2px; border-radius: 4px; }
+.rating-field small { color: var(--ret-muted); font-size: 10px; }
+.experience-comment { display: flex; flex-direction: column; gap: 8px; margin: 0; color: var(--ret-text); font-size: 13px; font-weight: 800; }
+.experience-comment textarea { width: 100%; min-height: 120px; padding: 13px; border: 1px solid #cfdde2; border-radius: 11px; outline: 0; resize: vertical; color: var(--ret-text); font: 500 13px/1.5 inherit; }
+.experience-comment textarea:focus { border-color: var(--ret-cyan); box-shadow: 0 0 0 3px #00abc81f; }
+.experience-comment small { align-self: flex-end; color: var(--ret-muted); font-size: 9px; font-weight: 500; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }

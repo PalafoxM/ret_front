@@ -1,0 +1,35 @@
+.wizard-header-actions { display: flex; align-items: center; gap: 18px; }
+.records-shortcuts { display: flex; align-items: center; gap: 9px; }
+.my-records-button { min-height: 40px; padding: 0 16px; border: 0; border-radius: 10px; background: linear-gradient(110deg, var(--ret-cyan), var(--ret-blue)); color: #fff; font: 750 12px inherit; cursor: pointer; box-shadow: 0 7px 18px #0878b931; }
+.my-records-button:hover { background: linear-gradient(110deg, var(--ret-cyan-dark), var(--ret-navy)); }
+.new-record-button { min-height: 40px; padding: 0 15px; border: 1px solid var(--ret-blue); border-radius: 10px; background: #fff; color: var(--ret-navy); font: 750 12px inherit; cursor: pointer; }
+.new-record-button:hover { border-color: var(--ret-cyan); background: var(--ret-ice); }
+.records-backdrop { position: fixed; z-index: 2500; inset: 0; display: grid; place-items: center; padding: 24px; overflow-y: auto; background: #073764bf; backdrop-filter: blur(7px); }
+.records-modal { position: relative; width: min(820px, 100%); max-height: calc(100vh - 48px); padding: 32px; overflow-y: auto; border: 1px solid #ffffff90; border-radius: 22px; background: #fbfdfe; box-shadow: 0 28px 90px #052d5170; }
+.records-modal > header { margin-bottom: 24px; padding-right: 45px; }
+.records-modal > header h2 { margin: 10px 0 6px; color: var(--ret-navy); font: 500 34px/1.05 Georgia, serif; }
+.records-modal > header p { margin: 0; color: var(--ret-muted); font-size: 13px; }
+.records-list { display: grid; gap: 13px; }
+.records-list article { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 18px; padding: 16px; border: 1px solid #d2e3e8; border-radius: 14px; background: #fff; }
+.records-list article.current { border-color: var(--ret-cyan); background: var(--ret-ice); box-shadow: inset 4px 0 0 var(--ret-cyan); }
+.record-main { display: flex; align-items: center; min-width: 0; gap: 13px; }
+.record-icon { display: grid; place-items: center; flex: 0 0 42px; width: 42px; height: 42px; border-radius: 11px; background: var(--ret-sky); font-size: 21px; }
+.record-main > div { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
+.record-main strong { overflow: hidden; color: var(--ret-text); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.record-main span:not(.record-icon) { color: var(--ret-blue); font-size: 10px; font-weight: 700; }
+.record-main small { color: var(--ret-muted); font-size: 10px; }
+.record-main b { align-self: flex-start; margin-left: auto; padding: 5px 8px; border-radius: 10px; background: var(--ret-cyan); color: #fff; font-size: 8px; text-transform: uppercase; }
+.record-actions { display: flex; align-items: center; gap: 8px; }
+.record-actions button { display: grid; place-items: center; width: 38px; height: 38px; border: 1px solid var(--ret-line); border-radius: 10px; background: var(--ret-ice); color: var(--ret-navy); font-size: 17px; cursor: pointer; }
+.record-actions button:hover { border-color: var(--ret-cyan); background: var(--ret-sky); }
+.record-actions button.delete { border-color: #ebc4c8; background: #fff4f5; color: #b8303d; }
+.record-actions button.delete:hover { border-color: #cf5560; background: #ffe7e9; }
+@media (max-width: 700px) {
+  .wizard-header-actions { gap: 8px; }
+  .records-shortcuts { gap: 6px; }
+  .my-records-button, .new-record-button { padding: 0 9px; font-size: 10px; }
+  .records-backdrop { padding: 0; }
+  .records-modal { width: 100%; min-height: 100vh; max-height: 100vh; padding: 25px 18px; border-radius: 0; }
+  .records-list article { grid-template-columns: 1fr; }
+  .record-actions { justify-content: flex-end; }
+}

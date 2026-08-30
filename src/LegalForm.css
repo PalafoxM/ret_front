@@ -1,0 +1,17 @@
+.legal-intro { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 17px 19px; border: 1px solid #d5e0e8; border-radius: 13px; background: #f2f7fb; }
+.legal-intro > div { display: flex; flex-direction: column; gap: 2px; }
+.legal-intro .eyebrow { margin: 0; font-size: 9px; }
+.legal-intro strong { color: #164f96; font-size: 13px; }
+.legal-intro p { max-width: 460px; margin: 0; color: #586b61; font-size: 11px; line-height: 1.5; text-align: right; }
+.document-list { display: grid; gap: 13px; }
+.document-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 11px 18px; padding: 16px; border: 1px solid #d6e0da; border-radius: 12px; background: #fbfcfb; }
+.document-copy { display: flex; flex-direction: column; gap: 5px; }
+.document-copy strong { color: #243e31; font-size: 12px; }
+.document-copy strong b { color: #dd3945; }
+.document-copy small { color: #718078; font-size: 10px; line-height: 1.45; }
+.document-card > label { position: relative; display: grid; place-items: center; min-width: 160px; min-height: 42px; margin: 0; padding: 0 14px; overflow: hidden; border: 1px dashed #91a69a; border-radius: 9px; background: #f2f7f4; color: #37644f; font-size: 11px; font-weight: 750; cursor: pointer; }
+.document-card > label:hover { border-color: #26724e; background: #eaf5ee; }
+.document-card > label.has-file { border-style: solid; border-color: #55a079; background: #edf8f1; }
+.document-card input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.document-card > a { grid-column: 2; color: #1766c2; font-size: 10px; font-weight: 700; text-align: center; }
+@media (max-width: 650px) { .legal-intro { align-items: flex-start; flex-direction: column; } .legal-intro p { text-align: left; } .document-card { grid-template-columns: 1fr; } .document-card > label { width: 100%; } .document-card > a { grid-column: 1; } }

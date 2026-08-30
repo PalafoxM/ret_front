@@ -1,0 +1,11 @@
+.technical-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.technical-nav button { min-height: 48px; border: 1px solid #d2dce5; border-radius: 11px; background: #eef4f9; color: #1755a5; font: 750 12px inherit; cursor: pointer; }
+.technical-nav button:last-child { border-color: #1766d0; background: #1766d0; color: #fff; box-shadow: 0 9px 20px #1766d02c; }
+.technical-form hr { width: 100%; margin: 6px 0; border: 0; border-top: 1px solid #dce4e9; }
+.personnel-grid input[type="number"] { font-weight: 700; }
+.section-instruction { margin: -7px 0 0; color: #68776f; font-size: 10px; }
+.market-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px 18px; }
+.market-option { min-height: 48px; display: flex; flex-direction: row !important; align-items: center; gap: 10px !important; margin: 0; padding: 0 14px; border: 1px solid #d2dde5; border-radius: 11px; background: #f6f9fb; color: #16704a !important; font-size: 12px !important; cursor: pointer; }
+.market-option input { width: 16px; height: 16px; margin: 0; accent-color: #16704a; }
+.market-option:has(input:checked) { border-color: #59a37e; background: #eef8f2; }
+@media (max-width: 650px) { .technical-nav, .market-grid { grid-template-columns: 1fr; } }

@@ -1,0 +1,25 @@
+.brand-logo {
+  display: block;
+  height: auto;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.brand-logo-ret {
+  width: 120px;
+}
+
+.brand-logo-gto {
+  width: 140px;
+  margin-left: auto;
+}
+
+@media (max-width: 520px) {
+  .brand-logo-ret {
+    width: 150px;
+  }
+
+  .brand-logo-gto {
+    width: 125px;
+  }
+}
