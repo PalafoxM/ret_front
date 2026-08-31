@@ -22,6 +22,24 @@ import './Logo.css'
 
 const DEFAULT_CENTER = [23.6345, -102.5528]
 const ESTABLECIMIENTO_TOKEN = import.meta.env.TOKEN_ESTABLECIMIENTO
+const cleanCatalogText = (value) => {
+  if (typeof value !== 'string') return value
+  const entities = {
+    amp: '&', aacute: '\u00e1', eacute: '\u00e9', iacute: '\u00ed', oacute: '\u00f3', uacute: '\u00fa',
+    Aacute: '\u00c1', Eacute: '\u00c9', Iacute: '\u00cd', Oacute: '\u00d3', Uacute: '\u00da',
+    ntilde: '\u00f1', Ntilde: '\u00d1', uuml: '\u00fc', Uuml: '\u00dc',
+  }
+  const mojibake = {
+    '\u00c3\u00a1': '\u00e1', '\u00c3\u00a9': '\u00e9', '\u00c3\u00ad': '\u00ed', '\u00c3\u00b3': '\u00f3', '\u00c3\u00ba': '\u00fa',
+    '\u00c3\u0081': '\u00c1', '\u00c3\u0089': '\u00c9', '\u00c3\u008d': '\u00cd', '\u00c3\u0093': '\u00d3', '\u00c3\u009a': '\u00da',
+    '\u00c3\u00b1': '\u00f1', '\u00c3\u0091': '\u00d1', '\u00c3\u00bc': '\u00fc', '\u00c3\u009c': '\u00dc',
+  }
+  return value
+    .replace(/&iacutestica/gi, '\u00edstica')
+    .replace(/&([A-Za-z]+);/g, (match, entity) => entities[entity] ?? match)
+    .replace(/[\u00c3][\u0080-\u00bf]/g, (match) => mojibake[match] ?? match)
+    .trim()
+}
 const GIRO_ICONS = {
   1: '🏨', 2: '✈️', 3: '🧭', 4: '🎪', 5: '🍽️',
   6: '⛳', 7: '🏺', 8: '🏛️', 9: '🚗', 10: '🎡',
@@ -139,7 +157,7 @@ function RegistrationModal({ onClose, accountEmail = '', onRegistered }) {
         <button className="registration-submit" type="button" onClick={() => onRegistered ? onRegistered(registrationResult) : onClose()}>Finalizar</button>
       </div> : <form className="registration-form" onSubmit={submitRegistration}>
         <label className="registration-field registration-wide">Registro Federal de Contribuyentes (RFC)<input name="rfc" placeholder="Ej. ABCD010203EF4" minLength="12" maxLength="13" required /></label>
-        <label className="registration-field">Giro comercial<select name="giro" defaultValue="" required><option value="" disabled>Elegir giro…</option>{giros.map((item) => <option key={item.id_giro} value={item.id_giro}>{GIRO_ICONS[item.id_giro] || '📍'} {item.giro}</option>)}</select></label>
+        <label className="registration-field">Giro comercial<select name="giro" defaultValue="" required><option value="" disabled>Elegir giro…</option>{giros.map((item) => <option key={item.id_giro} value={item.id_giro}>{GIRO_ICONS[item.id_giro] || '📍'} {cleanCatalogText(item.giro)}</option>)}</select></label>
         <label className="registration-field">Municipio<select name="municipio" defaultValue="" required><option value="" disabled>Elegir municipio…</option>{municipios.map((item) => <option key={item.id_municipio} value={item.id_municipio}>{item.municipio}</option>)}</select></label>
         <label className="registration-field registration-wide">Nombre completo o nombre comercial<input name="nombre_completo" maxLength="200" required /></label>
         <label className="registration-field">Fecha de inicio de operación y/o apertura<input name="fecha_inicio" type="date" required /></label>
@@ -300,7 +318,7 @@ function DatosGeneralesStep({ user, onContinue }) {
   return <div className="general-form">
     <FormSection icon="ⓘ" title="Datos Generales"><div className="general-grid"><label className="wide">Nombre comercial<input value={data.nombre_comercial || ''} readOnly /></label><label className="wide">Persona responsable *<input {...field('contacto')} placeholder="Persona de contacto" required /></label></div></FormSection>
     <FormSection icon="🏛️" title="Datos Legales"><div className="general-grid"><label>Tipo de persona *<select {...field('tipo_persona')} required><option value="">Seleccionar…</option><option value="1">Persona física</option><option value="2">Persona moral</option></select></label><label>RFC<input value={data.info_rfc || ''} readOnly /></label><label>Razón social *<input {...field('razon_social')} required /></label><label>Representante legal<input {...field('representante_moral')} /></label></div></FormSection>
-    <FormSection icon="🏢" title="Sub-Rubro"><div className="general-grid"><label className="wide">Subrubro al que pertenece *<select {...field('idgiro_subrubro')} required><option value="">Elegir opción…</option>{subrubros.map((item) => <option key={item.idgiro_subrubro} value={item.idgiro_subrubro}>{item.descripcion}</option>)}</select></label></div></FormSection>
+    {subrubros.length > 0 && <FormSection icon="🏢" title="Sub-Rubro"><div className="general-grid"><label className="wide">Subrubro al que pertenece *<select {...field('idgiro_subrubro')} required><option value="">Elegir opción…</option>{subrubros.map((item) => <option key={item.idgiro_subrubro} value={item.idgiro_subrubro}>{cleanCatalogText(item.descripcion)}</option>)}</select></label></div></FormSection>}
     <FormSection icon="📍" title="Dirección"><div className="general-grid"><label className="wide">Calle *<input {...field('calle')} required /></label><label>Número exterior *<input {...field('numero')} required /></label><label>Número interior<input {...field('interior')} /></label><label>Colonia *<input {...field('colonia')} required /></label><label>Municipio<input value={data.municipio_nombre || ''} readOnly /></label><label>Código postal *<input {...field('cp')} inputMode="numeric" required /></label></div></FormSection>
     <FormSection icon="📞" title="Teléfonos"><div className="general-grid"><label>Teléfono *<input {...field('telefono')} type="tel" required /></label><label>Teléfono de atención al cliente *<input {...field('telefono_comercial')} type="tel" required /></label><label>Teléfono alternativo<input {...field('telefono2')} type="tel" /></label></div></FormSection>
     <FormSection icon="📶" title="Datos Electrónicos"><div className="general-grid"><label>Sitio web<input {...field('web')} placeholder="https://" /></label><label>Correo electrónico<input value={data.correo || user.email || ''} readOnly /></label><label>Correo de atención al cliente *<input {...field('correo_atncli')} type="email" required /></label><label>Facebook Fan Page<input {...field('facebook')} placeholder="https://" /></label><label>Twitter / X<input {...field('twitter')} placeholder="https://" /></label></div></FormSection>
@@ -826,8 +844,25 @@ function RestaurantesStep({ onContinue, onBack }) {
 }
 
 const GOLF_TERRAINS = [['plano', 'Plano'], ['semiplano', 'Semiplano'], ['ondulado', 'Ondulado']]
-const GOLF_SERVICES = Array.from({ length: 9 }, (_, index) => [`serv${String(index + 1).padStart(2, '0')}`, `Servicio ${String(index + 1).padStart(2, '0')}`])
-const GOLF_PAYMENTS = Array.from({ length: 6 }, (_, index) => [`tc${String(index + 1).padStart(2, '0')}`, `Tarjeta / medio ${String(index + 1).padStart(2, '0')}`])
+const GOLF_SERVICES = [
+  ['serv01', 'Casa Club'],
+  ['serv02', 'Putting Green'],
+  ['serv03', 'Marcas de Yardas'],
+  ['serv04', 'Clases de Golf'],
+  ['serv05', 'Restaurante'],
+  ['serv06', 'Reservación de Salidas'],
+  ['serv07', 'Tee de Práctica'],
+  ['serv08', 'Renta de Autos'],
+  ['serv09', 'Tienda Profesional'],
+]
+const GOLF_PAYMENTS = [
+  ['tc01', 'American Express'],
+  ['tc02', 'Visa'],
+  ['tc03', 'Master Card'],
+  ['tc04', 'Efectivo'],
+  ['tc05', 'Cheque de Viajero'],
+  ['tc06', 'Otra'],
+]
 
 function GolfStep({ onContinue, onBack }) {
   const [data, setData] = useState(null)
@@ -864,18 +899,18 @@ function GolfStep({ onContinue, onBack }) {
     <div className="legal-intro"><div><span className="eyebrow">Paso en curso</span><strong>80% completado</strong></div><p>Captura las características, servicios y medios de pago del campo.</p></div>
     <FormSection icon="⛳" title="Campo de Golf">
       <div className="general-grid">
-        {yesNo('turistico', '¿Es un campo turístico?')}{yesNo('carrito', '¿Cuenta con carritos?')}{yesNo('privado', '¿Es privado?')}
-        <label>Número de hoyos *<input {...field('hoyos')} type="number" min="1" max="999" required /></label>
-        <label>Par del campo *<input {...field('par')} type="number" min="1" max="999" required /></label>
-        <label>Longitud *<input {...field('longitud')} type="number" min="1" max="9999999" required /></label>
-        <label>Diseñado por *<input {...field('disenado')} maxLength="120" required /></label>
-        <label>Fairways *<input {...field('fairways')} maxLength="120" required /></label>
-        <label>Greens *<input {...field('greens')} maxLength="120" required /></label>
+        {yesNo('turistico', 'El campo es')}{yesNo('carrito', 'Uso obligatorio de carrito')}{yesNo('privado', 'Privado con facilidades')}
+        <label>Número de Hoyos *<input {...field('hoyos')} type="number" min="1" max="999" required /></label>
+        <label>Par *<input {...field('par')} type="number" min="1" max="999" required /></label>
+        <label>Longitud en Yardas *<input {...field('longitud')} type="number" min="1" max="9999999" required /></label>
+        <label>Diseñador del campo *<input {...field('disenado')} maxLength="120" required /></label>
+        <label>Tipo de pasto (Fairways) *<input {...field('fairways')} maxLength="120" required /></label>
+        <label>Tipo de pasto (Greens) *<input {...field('greens')} maxLength="120" required /></label>
       </div>
     </FormSection>
     <FormSection icon="🏞️" title="Tipo de Terreno"><p className="section-instruction">Selecciona al menos una opción.</p><div className="lodging-options">{GOLF_TERRAINS.map(checkbox)}</div></FormSection>
     <FormSection icon="🏌️" title="Servicios"><div className="lodging-options">{GOLF_SERVICES.map(checkbox)}</div></FormSection>
-    <FormSection icon="💳" title="Tarjetas y Medios de Pago"><div className="lodging-options">{GOLF_PAYMENTS.map(checkbox)}</div><div className="general-grid"><label className="wide">Otro medio de pago<input {...field('otra_tc')} maxLength="120" placeholder="Otro medio" /></label></div></FormSection>
+    <FormSection icon="💳" title="Tarjetas y Medios de Pago"><div className="lodging-options">{GOLF_PAYMENTS.map(checkbox)}</div><div className="general-grid"><label className="wide">Otra, ¿Cuál?<input {...field('otra_tc')} maxLength="120" placeholder="Especifica otra forma de pago" /></label></div></FormSection>
     {message && <p className="general-message" role="status">{message}</p>}
     <button className="save-general" type="button" disabled={saving} onClick={(event) => save(event.currentTarget.form)}>{saving ? 'Guardando campo…' : 'Guardar y continuar'} <span>→</span></button>
   </div>
@@ -931,11 +966,52 @@ function ArteStep({ onContinue, onBack }) {
   </div>
 }
 
-const RENTAL_PERMITS = [['perm1', 'Permiso municipal'], ['perm2', 'Permiso estatal'], ['perm3', 'Permiso federal']]
-const RENTAL_FEATURES = Array.from({ length: 14 }, (_, index) => [`caract${index + 1}`, `Característica ${index + 1}`])
-const RENTAL_MODALITIES = Array.from({ length: 5 }, (_, index) => [`mod${String(index + 1).padStart(2, '0')}`, `Modalidad ${String(index + 1).padStart(2, '0')}`])
-const RENTAL_SERVICES = Array.from({ length: 12 }, (_, index) => [`serv${String(index + 1).padStart(2, '0')}`, `Unidad / servicio ${String(index + 1).padStart(2, '0')}`])
-const RENTAL_PAYMENTS = Array.from({ length: 6 }, (_, index) => [`tc${String(index + 1).padStart(2, '0')}`, `Forma de pago ${String(index + 1).padStart(2, '0')}`])
+const RENTAL_PERMITS = [['perm1', 'Municipal'], ['perm2', 'Estatal'], ['perm3', 'Federal']]
+const RENTAL_FEATURES = [
+  ['caract1', 'Aire Acondicionado'],
+  ['caract2', 'Cafetería a Bordo'],
+  ['caract3', 'Servicio de Edecanes'],
+  ['caract4', 'Primeros Auxilios'],
+  ['caract5', 'Transporte de Equipo Especial'],
+  ['caract6', 'Bar a Bordo'],
+  ['caract7', 'Restaurante a Bordo'],
+  ['caract8', 'Tours Guiados'],
+  ['caract9', 'Guía'],
+  ['caract10', 'Paquetes Promocionales'],
+  ['caract11', 'Abordaje a Domicilio'],
+  ['caract12', 'Salón VIP'],
+  ['caract13', 'Transporte de Menaje'],
+  ['caract14', 'Transporte de Vehículos'],
+]
+const RENTAL_MODALITIES = [
+  ['mod01', 'Vuelos Comerciales'],
+  ['mod02', 'Vuelos Charters'],
+  ['mod03', 'Autobuses Comerciales'],
+  ['mod04', 'Autobuses Especiales de Turismo'],
+  ['mod05', 'Taxis'],
+]
+const RENTAL_SERVICES = [
+  ['serv01', 'Automóviles'],
+  ['serv02', 'Bicicletas y Motocicletas'],
+  ['serv03', 'Combis y Vans'],
+  ['serv04', 'Limousines'],
+  ['serv05', 'Autobuses'],
+  ['serv06', 'Campers'],
+  ['serv07', 'Vehículos para Carretera'],
+  ['serv08', 'Motocicletas'],
+  ['serv09', 'Bicicletas'],
+  ['serv10', 'Aviones'],
+  ['serv11', 'Ultraligeros'],
+  ['serv12', 'Planeadores'],
+]
+const RENTAL_PAYMENTS = [
+  ['tc01', 'American Express'],
+  ['tc02', 'Visa'],
+  ['tc03', 'Master Card'],
+  ['tc04', 'Efectivo'],
+  ['tc05', 'Cheque de Viajero'],
+  ['tc06', 'Otra'],
+]
 
 function ArrendadoraStep({ onContinue, onBack }) {
   const [data, setData] = useState(null)
@@ -985,14 +1061,57 @@ function ArrendadoraStep({ onContinue, onBack }) {
     <FormSection icon="✓" title="Características del Servicio"><div className="lodging-options">{RENTAL_FEATURES.map(checkbox)}</div></FormSection>
     <FormSection icon="🛣️" title="Modalidad de Transporte"><div className="lodging-options">{RENTAL_MODALITIES.map(checkbox)}</div></FormSection>
     <FormSection icon="🚙" title="Tipos de Unidades y Servicios"><div className="lodging-options">{RENTAL_SERVICES.map(checkbox)}</div></FormSection>
-    <FormSection icon="💳" title="Formas de Pago"><div className="lodging-options">{RENTAL_PAYMENTS.map(checkbox)}</div><div className="general-grid"><label className="wide">Otra forma de pago<input {...field('otra_tc')} maxLength="120" /></label></div></FormSection>
+    <FormSection icon="💳" title="Formas de Pago"><div className="lodging-options">{RENTAL_PAYMENTS.map(checkbox)}</div><div className="general-grid"><label className="wide">Otra, ¿Cuál?<input {...field('otra_tc')} maxLength="120" /></label></div></FormSection>
     {message && <p className="general-message" role="status">{message}</p>}
     <button className="save-general" type="button" disabled={saving} onClick={(event) => save(event.currentTarget.form)}>{saving ? 'Guardando arrendadora…' : 'Guardar y continuar'} <span>→</span></button>
   </div>
 }
 
-const PARK_SERVICES = Array.from({ length: 35 }, (_, index) => [`serv${String(index + 1).padStart(2, '0')}`, `Servicio adicional ${index + 1}`])
-const PARK_PAYMENTS = Array.from({ length: 6 }, (_, index) => [`tc${String(index + 1).padStart(2, '0')}`, `Forma de pago ${index + 1}`])
+const PARK_SERVICES = [
+  ['serv01', 'Agencia de viajes'],
+  ['serv02', 'Jardines'],
+  ['serv03', 'Zona de carga y descarga'],
+  ['serv04', 'Área de registro'],
+  ['serv05', 'Restaurante'],
+  ['serv06', 'Cafetería'],
+  ['serv07', 'Arrendadora de auto'],
+  ['serv08', 'Asesoría financiera'],
+  ['serv09', 'Centro de negocios'],
+  ['serv10', 'Centro de servicios'],
+  ['serv11', 'Edecanes'],
+  ['serv12', 'Equipo audiovisual'],
+  ['serv13', 'Equipo de sonido'],
+  ['serv14', 'Estacionamiento'],
+  ['serv15', 'Fax'],
+  ['serv16', 'Florería'],
+  ['serv17', 'Guía de turismo'],
+  ['serv18', 'Colgado de lonas y mantas'],
+  ['serv19', 'Mobiliario de montaje'],
+  ['serv20', 'Montaje de stands'],
+  ['serv21', 'Oficinas administrativas'],
+  ['serv22', 'Renta de bodegas'],
+  ['serv23', 'Renta de taquillas'],
+  ['serv24', 'Sanitarios'],
+  ['serv25', 'Servicio médico'],
+  ['serv26', 'Guardería'],
+  ['serv27', 'Servicio de taxis'],
+  ['serv28', 'Tabaquería'],
+  ['serv29', 'Teléfonos'],
+  ['serv30', 'Traducción simultánea'],
+  ['serv31', 'Proveedores'],
+  ['serv32', 'Organización de exposiciones'],
+  ['serv33', 'Organización de convenciones'],
+  ['serv34', 'Oficinas para comité organizador'],
+  ['serv35', 'Equipo de cómputo'],
+]
+const PARK_PAYMENTS = [
+  ['tc01', 'American Express'],
+  ['tc02', 'Visa'],
+  ['tc03', 'Master Card'],
+  ['tc04', 'Efectivo'],
+  ['tc05', 'Cheque de Viajero'],
+  ['tc06', 'Otra'],
+]
 
 function ParquesStep({ onContinue, onBack }) {
   const [data, setData] = useState(null)
@@ -1032,7 +1151,7 @@ function ParquesStep({ onContinue, onBack }) {
       <div className="general-grid"><label>Capacidad máxima del lugar *<input {...field('capacidad')} maxLength="10" required placeholder="Ej. 5000" /></label></div>
     </FormSection>
     <FormSection icon="✓" title="Servicios Adicionales"><p className="section-instruction">Selecciona al menos un servicio.</p><div className="lodging-options">{PARK_SERVICES.map(checkbox)}</div></FormSection>
-    <FormSection icon="💳" title="Formas de Pago"><div className="lodging-options">{PARK_PAYMENTS.map(checkbox)}</div><div className="general-grid"><label className="wide">Otra forma de pago<input {...field('otra_tc')} maxLength="120" /></label></div></FormSection>
+    <FormSection icon="💳" title="Formas de Pago"><div className="lodging-options">{PARK_PAYMENTS.map(checkbox)}</div><div className="general-grid"><label className="wide">Otra, ¿Cuál?<input {...field('otra_tc')} maxLength="120" /></label></div></FormSection>
     {message && <p className="general-message" role="status">{message}</p>}
     <button className="save-general" type="button" disabled={saving} onClick={(event) => save(event.currentTarget.form)}>{saving ? 'Guardando espacios turísticos…' : 'Guardar y continuar'} <span>→</span></button>
   </div>
@@ -1083,6 +1202,354 @@ function AuxTuristicoStep({ onContinue, onBack }) {
     </FormSection>
     {message && <p className="general-message" role="status">{message}</p>}
     <button className="save-general" type="button" disabled={saving} onClick={(event) => save(event.currentTarget.form)}>{saving ? 'Guardando operador turístico…' : 'Guardar y continuar'} <span>→</span></button>
+  </div>
+}
+
+const WATER_PARK_SCHEDULES = [['hor_mat', 'Matutino'], ['hor_vesp', 'Vespertino'], ['hor_diur', 'Diurno']]
+const WATER_PARK_SERVICES = [
+  ['serv01', 'Lago artificial'], ['serv02', 'Lago natural'], ['serv03', 'Aguas termales'],
+  ['serv04', 'Albercas de olas'], ['serv05', 'Personal salvavidas'], ['serv06', 'Toboganes'],
+  ['serv07', 'Chapoteaderos'], ['serv08', 'Tren escénico'], ['serv09', 'Áreas verdes'],
+  ['serv10', 'Regaderas'], ['serv11', 'Cafetería'], ['serv12', 'Área de asadores'],
+  ['serv13', 'Vestidores'], ['serv14', 'Sanitarios'], ['serv15', 'Área de juegos infantiles'],
+  ['serv16', 'Equipo de contingencias'], ['serv17', 'Aplicación de mascarillas'], ['serv18', 'Masajes'],
+  ['serv19', 'Fuentes de sodas'], ['serv20', 'Restaurante'], ['serv21', 'Tienda de souvenirs'],
+  ['serv22', 'Boutique'], ['serv23', 'Bar'], ['serv24', 'Albercas privadas'],
+  ['serv25', 'Servicio médico'], ['serv26', 'Estacionamiento'], ['serv27', 'Hotel'],
+  ['serv28', 'Villas'], ['serv29', 'Cabañas'], ['serv30', 'Bungalows'],
+  ['serv31', 'Área de acampar'], ['serv32', 'Área para eventos'], ['serv33', 'Lavandería y tintorería'],
+  ['serv34', 'Spa'], ['serv35', 'Palapas'], ['serv36', 'Temazcal'],
+]
+const WATER_PARK_PAYMENTS = [
+  ['tc01', 'American Express'], ['tc02', 'Visa'], ['tc03', 'Master Card'],
+  ['tc04', 'Efectivo'], ['tc05', 'Cheque de Viajero'], ['tc06', 'Otra'],
+]
+
+function BalneariosStep({ onContinue, onBack }) {
+  const [data, setData] = useState(null)
+  const [message, setMessage] = useState('')
+  const [saving, setSaving] = useState(false)
+  useEffect(() => {
+    const controller = new AbortController()
+    fetch('/api/form/balnearios', { signal: controller.signal })
+      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.message); return result })
+      .then((result) => setData(result.data))
+      .catch((error) => { if (error.name !== 'AbortError') setMessage(error.message || 'No fue posible cargar el formulario de balnearios.') })
+    return () => controller.abort()
+  }, [])
+  const update = (name, value) => setData((current) => ({ ...current, [name]: value }))
+  const field = (name) => ({ value: data[name] ?? '', onChange: (event) => update(name, event.target.value) })
+  const checkbox = ([name, label]) => <label className="lodging-option" key={name}><input type="checkbox" checked={Boolean(Number(data[name]))} onChange={(event) => update(name, Number(event.target.checked))} /><span>{label}</span></label>
+  const hasChecked = (options) => options.some(([name]) => Number(data[name]) === 1)
+  const save = async (form) => {
+    if (form && !form.reportValidity()) return
+    if (!hasChecked(WATER_PARK_SCHEDULES)) { setMessage('Selecciona al menos un horario.'); return }
+    if (!hasChecked(WATER_PARK_SERVICES) && !String(data.serv_otro || '').trim()) { setMessage('Selecciona o captura al menos un servicio.'); return }
+    if (!hasChecked(WATER_PARK_PAYMENTS) && !String(data.otra_tc || '').trim()) { setMessage('Selecciona o captura al menos una forma de pago.'); return }
+    setSaving(true); setMessage('')
+    try {
+      const response = await fetch('/api/form/balnearios', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.message)
+      onContinue()
+    } catch (error) {
+      setMessage(error.message || 'No fue posible guardar el formulario de balnearios.')
+    } finally { setSaving(false) }
+  }
+  if (!data) return <div className="form-loading">{message || 'Cargando formulario de balnearios…'}</div>
+  return <div className="general-form water-park-form">
+    <div className="technical-nav"><button type="button" onClick={onBack}>← Anterior</button><button type="button" onClick={onContinue}>Siguiente →</button></div>
+    <div className="legal-intro"><div><span className="eyebrow">Paso en curso</span><strong>80% completado</strong></div><p>Captura los horarios, instalaciones, promoción y servicios del establecimiento.</p></div>
+    <FormSection icon="🌊" title="Balnearios y/o Parques Acuáticos">
+      <p className="section-instruction">Selecciona al menos un horario.</p><div className="lodging-options">{WATER_PARK_SCHEDULES.map(checkbox)}</div>
+      <div className="general-grid">
+        <label>Capacidad máxima del lugar *<input {...field('capacidad')} inputMode="numeric" maxLength="10" required /></label>
+        <label>Número de Albercas *<input {...field('alberca')} inputMode="numeric" maxLength="10" required /></label>
+        <label>Número de Chapoteaderos *<input {...field('chapoteadero')} inputMode="numeric" maxLength="10" required /></label>
+        <label>Número de Toboganes *<input {...field('tobogan')} inputMode="numeric" maxLength="10" required /></label>
+        <label>Número de Cajones de Estacionamiento *<input {...field('estacionamiento')} inputMode="numeric" maxLength="10" required /></label>
+        <label>Apertura al Público *<input {...field('apertura')} maxLength="15" required placeholder="Ej. 09:00" /></label>
+      </div>
+    </FormSection>
+    <FormSection icon="📣" title="Promoción y Publicidad"><div className="general-grid"><label className="wide">Mencionar el material promocional que manejan *<textarea {...field('material')} maxLength="5000" rows="4" required /></label><label className="wide">Mencionar los medios de publicidad que manejan *<textarea {...field('medios')} maxLength="5000" rows="4" required /></label></div></FormSection>
+    <FormSection icon="🏊" title="Servicios"><div className="lodging-options">{WATER_PARK_SERVICES.map(checkbox)}</div><div className="general-grid"><label className="wide">Otros Servicios<textarea {...field('serv_otro')} maxLength="5000" rows="3" /></label></div></FormSection>
+    <FormSection icon="💳" title="Formas de Pago"><div className="lodging-options">{WATER_PARK_PAYMENTS.map(checkbox)}</div><div className="general-grid"><label className="wide">Otra, ¿Cuál?<input {...field('otra_tc')} maxLength="120" /></label></div></FormSection>
+    {message && <p className="general-message" role="status">{message}</p>}
+    <button className="save-general" type="button" disabled={saving} onClick={(event) => save(event.currentTarget.form)}>{saving ? 'Guardando balneario…' : 'Guardar y continuar'} <span>→</span></button>
+  </div>
+}
+
+const TRAINING_SERVICES = [
+  ['serv01', 'Registro estatal'], ['serv02', 'Registro federal'], ['serv03', 'Sin registro'],
+  ['serv04', 'Autónoma'], ['serv05', 'Pública'], ['serv06', 'Privada'],
+  ['serv07', 'Postgrados'], ['serv08', 'Registro STPS'], ['serv09', 'Instructor independiente'],
+  ['serv10', 'Instructor habilitado'], ['serv11', 'Institución capacitadora'], ['serv12', 'Vinculación escuela-empresa'],
+  ['serv13', 'Programa de becas'], ['serv14', 'Intercambio escolar'], ['serv15', 'Talleres especializados'],
+  ['serv16', 'Idiomas'],
+]
+const TRAINING_PAYMENTS = [
+  ['tc01', 'American Express'], ['tc02', 'Visa'], ['tc03', 'Master Card'],
+  ['tc06', 'Efectivo'], ['tc04', 'Cheque de Viajero'], ['tc05', 'Otra'],
+]
+
+function CapacitacionStep({ onContinue, onBack }) {
+  const [data, setData] = useState(null)
+  const [message, setMessage] = useState('')
+  const [saving, setSaving] = useState(false)
+  useEffect(() => {
+    const controller = new AbortController()
+    fetch('/api/form/capacitacion', { signal: controller.signal })
+      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.message); return result })
+      .then((result) => setData(result.data))
+      .catch((error) => { if (error.name !== 'AbortError') setMessage(error.message || 'No fue posible cargar el formulario de capacitación turística.') })
+    return () => controller.abort()
+  }, [])
+  const update = (name, value) => setData((current) => ({ ...current, [name]: value }))
+  const field = (name) => ({ value: data[name] ?? '', onChange: (event) => update(name, event.target.value) })
+  const checkbox = ([name, label]) => <label className="lodging-option" key={name}><input type="checkbox" checked={Boolean(Number(data[name]))} onChange={(event) => update(name, Number(event.target.checked))} /><span>{label}</span></label>
+  const hasChecked = (options) => options.some(([name]) => Number(data[name]) === 1)
+  const save = async (form) => {
+    if (form && !form.reportValidity()) return
+    if (!hasChecked(TRAINING_SERVICES)) { setMessage('Selecciona al menos un registro, modalidad o servicio.'); return }
+    if (!hasChecked(TRAINING_PAYMENTS) && !String(data.otra_tc || '').trim()) { setMessage('Selecciona o captura al menos una forma de pago.'); return }
+    setSaving(true); setMessage('')
+    try {
+      const response = await fetch('/api/form/capacitacion', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.message)
+      onContinue()
+    } catch (error) {
+      setMessage(error.message || 'No fue posible guardar el formulario de capacitación turística.')
+    } finally { setSaving(false) }
+  }
+  if (!data) return <div className="form-loading">{message || 'Cargando formulario de capacitación turística…'}</div>
+  return <div className="general-form training-form">
+    <div className="technical-nav"><button type="button" onClick={onBack}>← Anterior</button><button type="button" onClick={onContinue}>Siguiente →</button></div>
+    <div className="legal-intro"><div><span className="eyebrow">Paso en curso</span><strong>80% completado</strong></div><p>Captura la información académica, servicios y formas de pago.</p></div>
+    <FormSection icon="🎓" title="Capacitación Turística">
+      <div className="general-grid">
+        <label className="wide">Horario de servicio *<input {...field('horario')} maxLength="120" required placeholder="Ej. Lunes a viernes de 09:00 a 18:00" /></label>
+        <label className="wide">Asociaciones a las que pertenece *<textarea {...field('asociaciones')} maxLength="5000" rows="3" required /></label>
+        <label className="wide">Certificaciones y/o acreditaciones obtenidas *<textarea {...field('certificaciones')} maxLength="5000" rows="3" required /></label>
+        <label className="wide">Matrícula de carreras enfocadas al turismo *<textarea {...field('matricula')} maxLength="5000" rows="3" required /></label>
+        <label className="wide">No. de personas que imparten la capacitación en los planteles *<input {...field('nopersonas')} inputMode="numeric" maxLength="10" required /></label>
+      </div>
+    </FormSection>
+    <FormSection icon="📚" title="Registros, Modalidades y Servicios"><p className="section-instruction">Selecciona al menos una opción.</p><div className="lodging-options">{TRAINING_SERVICES.map(checkbox)}</div></FormSection>
+    <FormSection icon="💳" title="Formas de Pago"><div className="lodging-options">{TRAINING_PAYMENTS.map(checkbox)}</div><div className="general-grid"><label className="wide">Otra, ¿Cuál?<input {...field('otra_tc')} maxLength="120" /></label></div></FormSection>
+    {message && <p className="general-message" role="status">{message}</p>}
+    <button className="save-general" type="button" disabled={saving} onClick={(event) => save(event.currentTarget.form)}>{saving ? 'Guardando capacitación…' : 'Guardar y continuar'} <span>→</span></button>
+  </div>
+}
+
+const SPORT_TYPES = [['pesca', 'Pesca Deportiva'], ['rancho', 'Rancho Cinegético'], ['deporte', 'Deporte'], ['recreacion', 'Recreación']]
+const SPORT_SERVICES = [
+  'Hotel', 'Restaurante', 'Renta de armas', 'Venta de cartuchos', 'Venta de equipo fotográfico', 'Servicio de transporte', 'Asistente o guía', 'Safari fotográfico',
+  'Evaluación física y nutricional', 'Gimnasia', 'Aerobics', 'Piscina cubierta', 'Piscina descubierta', 'Gimnasia acuática', 'Campos de golf', 'Club hípico',
+  'Talasoterapia', 'Masaje suizo', 'Masaje reductivo', 'Masaje terapéutico', 'Masaje deportivo', 'Aromaterapia', 'Reflexología', 'Algas', 'Fangos', 'Herbales',
+  'Sauna', 'Vapor', 'Jacuzzi', 'Tratamientos faciales', 'Boutique', 'Salón de belleza', 'Cafetería', 'Restaurantes', 'Enfermería', 'Hotel', 'Villas',
+  'Cabañas', 'Bungalows', 'Áreas de acampar', 'Servicio a cuartos', 'Áreas para eventos', 'Lavandería y tintorería', 'Bar', 'Entrenadores', 'Otros',
+].map((label, index) => [`serv${String(index + 1).padStart(2, '0')}`, label])
+const HUNTING_TYPES = [
+  'Pato charreteras', 'Pato golondrino', 'Pato chalcuan', 'Pato cuaresmeño', 'Cercetas listas verdes', 'Cerceta café', 'Pato triguero', 'Cerceta alas azules',
+  'Pato cabeza roja', 'Pato boludo prieto', 'Pato boludo grande', 'Pato coacoxtle', 'Branta negra o del pacífico', 'Ganso canadiense', 'Pato chillón jorobado',
+  'Pato chillón ojos dorados', 'Ganso nevado o ansar azul', 'Ganso ross', 'Pato pichichi', 'Pato phichihuila', 'Gallaereta', 'Grulla gris', 'Mergo caperuza',
+  'Negreta alas blancas', 'Negreta de merejada', 'Mergo americano', 'Mergo copetón', 'Pato tepalcate', 'Paloma de collar', 'Paloma morada', 'Paloma montañera',
+  'Paloma arroyera o suelera', 'Tordo charretero ganga', 'Codorniz de california', 'Codorniz de douglas', 'Codorniz de gambel', 'Codorniz de yucatán',
+  'Codorniz enmascarada o común', 'Codorniz moctezuma o pinta', 'Agachona', 'Agrarista o tordo negro', 'Chachalaca', 'Codorniz listada', 'Zanate cola de bote',
+  'Estornino', 'Chanate cabeza amarilla', 'Tepezcuintle', 'Ardilla de harris', 'Agutio guaqueque', 'Armadillo de nueve cintas', 'Tlacuache', 'Coyote',
+  'Liebre cola negra', 'Liebre torda', 'Tejón o coatí', 'Mapache', 'Ardilla collie', 'Ardilla nayarita', 'Ardilla cola anallada', 'Ardilla mexicana',
+  'Ardilla moteada', 'Ardilla de las rocas', 'Ardilla gris', 'Conejo audubon', 'Conejo del bosque tropical', 'Conejo mexicano', 'Conejo del este',
+  'Venado bura de sonora', 'Venado cola blanca texano', 'Borrego de cimarrón', 'Becerrillo', 'Perdiz o tinamu', 'Gato montés', 'Venado temazate rojo',
+  'Venado temazate café', 'Guajolote silvestre', 'Pavo ocelado', 'Faisán de collar', 'Puma', 'Venado bura', 'Venado cola blanca', 'Jabalí europeo',
+  'Jabalí de collar', 'Jabalí de labios blancos', 'Perdiz o tinamu real', 'Zorra gris',
+].map((label, index) => [`caza${String(index + 1).padStart(2, '0')}`, label])
+const SPORT_PAYMENTS = [['tc01', 'American Express'], ['tc02', 'Visa'], ['tc03', 'Master Card'], ['tc06', 'Efectivo'], ['tc04', 'Cheque de Viajero'], ['tc05', 'Otra']]
+
+function DeporteStep({ onContinue, onBack }) {
+  const [data, setData] = useState(null)
+  const [message, setMessage] = useState('')
+  const [saving, setSaving] = useState(false)
+  useEffect(() => {
+    const controller = new AbortController()
+    fetch('/api/form/deporte', { signal: controller.signal })
+      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.message); return result })
+      .then((result) => setData(result.data))
+      .catch((error) => { if (error.name !== 'AbortError') setMessage(error.message || 'No fue posible cargar el formulario de deporte y recreación.') })
+    return () => controller.abort()
+  }, [])
+  const update = (name, value) => setData((current) => ({ ...current, [name]: value }))
+  const field = (name) => ({ value: data[name] ?? '', onChange: (event) => update(name, event.target.value) })
+  const checkbox = ([name, label]) => <label className="lodging-option" key={name}><input type="checkbox" checked={Boolean(Number(data[name]))} onChange={(event) => update(name, Number(event.target.checked))} /><span>{label}</span></label>
+  const hasChecked = (options) => options.some(([name]) => Number(data[name]) === 1)
+  const save = async (form) => {
+    if (form && !form.reportValidity()) return
+    if (!hasChecked(SPORT_TYPES)) { setMessage('Selecciona al menos una modalidad de actividad.'); return }
+    if (!hasChecked(SPORT_SERVICES) && !String(data.otrostxt || '').trim()) { setMessage('Selecciona o captura al menos un servicio.'); return }
+    if (!hasChecked(SPORT_PAYMENTS) && !String(data.otra_tc || '').trim()) { setMessage('Selecciona o captura al menos una forma de pago.'); return }
+    setSaving(true); setMessage('')
+    try {
+      const response = await fetch('/api/form/deporte', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.message)
+      onContinue()
+    } catch (error) { setMessage(error.message || 'No fue posible guardar el formulario de deporte y recreación.') }
+    finally { setSaving(false) }
+  }
+  if (!data) return <div className="form-loading">{message || 'Cargando formulario de deporte y recreación…'}</div>
+  return <div className="general-form sport-form">
+    <div className="technical-nav"><button type="button" onClick={onBack}>← Anterior</button><button type="button" onClick={onContinue}>Siguiente →</button></div>
+    <div className="legal-intro"><div><span className="eyebrow">Paso en curso</span><strong>80% completado</strong></div><p>Captura las actividades, servicios y especies relacionadas con el establecimiento.</p></div>
+    <FormSection icon="🏃" title="Deporte y Recreación"><p className="section-instruction">Selecciona al menos una modalidad.</p><div className="lodging-options">{SPORT_TYPES.map(checkbox)}</div><div className="general-grid"><label className="wide">Detallar la Actividad *<textarea {...field('detalle')} maxLength="5000" rows="4" required /></label><label>Superficie (hectáreas) *<input {...field('superficie')} inputMode="decimal" maxLength="10" required /></label><label>No. de personas que imparten la capacitación en los planteles *<input {...field('nopersonas')} inputMode="numeric" maxLength="10" required /></label></div></FormSection>
+    <FormSection icon="🏅" title="Servicios"><div className="lodging-options">{SPORT_SERVICES.map(checkbox)}</div><div className="general-grid"><label className="wide">Otro, ¿Cuál?<textarea {...field('otrostxt')} maxLength="5000" rows="3" /></label></div></FormSection>
+    <FormSection icon="🦆" title="Tipos de Caza"><p className="section-instruction">Selecciona las especies que correspondan.</p><div className="lodging-options">{HUNTING_TYPES.map(checkbox)}</div></FormSection>
+    <FormSection icon="💳" title="Formas de Pago"><div className="lodging-options">{SPORT_PAYMENTS.map(checkbox)}</div><div className="general-grid"><label className="wide">Otra, ¿Cuál?<input {...field('otra_tc')} maxLength="120" /></label></div></FormSection>
+    {message && <p className="general-message" role="status">{message}</p>}
+    <button className="save-general" type="button" disabled={saving} onClick={(event) => save(event.currentTarget.form)}>{saving ? 'Guardando deporte y recreación…' : 'Guardar y continuar'} <span>→</span></button>
+  </div>
+}
+
+const SPA_SERVICES = [
+  'Evaluación Física y Nutricional', 'Gimnasia', 'Aerobics', 'Entrenadores', 'Piscina Cubierta', 'Piscina Descubierta', 'Gimnasia Acuática',
+  'Campos de Golf', 'Club Hípico', 'Talasoterapia', 'Masaje Suizo', 'Masaje Reductivo', 'Tienda de Souvenirs', 'Masaje Terapéutico',
+  'Masaje Deportivo', 'Aromaterapia', 'Reflexología', 'Algas', 'Fangos', 'Herbales', 'Sauna', 'Vapor', 'Jacuzzi', 'Tratamientos faciales',
+  'Boutique', 'Estacionamiento', 'Salón de belleza', 'Cafetería', 'Restaurantes', 'Enfermería', 'Hotel', 'Villas', 'Cabañas', 'Bungalows',
+  'Áreas de acampar', 'Servicio a cuartos', 'Áreas para eventos', 'Lavandería y tintorería', 'Temazcal', 'Bar', 'Otros',
+].map((label, index) => [`serv${String(index + 1).padStart(2, '0')}`, label])
+const SPA_PAYMENTS = [['tc01', 'American Express'], ['tc02', 'Visa'], ['tc03', 'Master Card'], ['tc04', 'Efectivo'], ['tc05', 'Cheque de Viajero'], ['tc06', 'Otra']]
+
+function SpaStep({ onContinue, onBack }) {
+  const [data, setData] = useState(null)
+  const [message, setMessage] = useState('')
+  const [saving, setSaving] = useState(false)
+  useEffect(() => {
+    const controller = new AbortController()
+    fetch('/api/form/spa', { signal: controller.signal })
+      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.message); return result })
+      .then((result) => setData(result.data))
+      .catch((error) => { if (error.name !== 'AbortError') setMessage(error.message || 'No fue posible cargar el formulario de SPA.') })
+    return () => controller.abort()
+  }, [])
+  const update = (name, value) => setData((current) => ({ ...current, [name]: value }))
+  const field = (name) => ({ value: data[name] ?? '', onChange: (event) => update(name, event.target.value) })
+  const checkbox = ([name, label]) => <label className="lodging-option" key={name}><input type="checkbox" checked={Boolean(Number(data[name]))} onChange={(event) => update(name, Number(event.target.checked))} /><span>{label}</span></label>
+  const hasChecked = (options) => options.some(([name]) => Number(data[name]) === 1)
+  const save = async (form) => {
+    if (form && !form.reportValidity()) return
+    if (!hasChecked(SPA_SERVICES) && !String(data.serv_otro || '').trim()) { setMessage('Selecciona o captura al menos un servicio.'); return }
+    if (!hasChecked(SPA_PAYMENTS) && !String(data.otra_tc || '').trim()) { setMessage('Selecciona o captura al menos una forma de pago.'); return }
+    setSaving(true); setMessage('')
+    try {
+      const response = await fetch('/api/form/spa', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.message)
+      onContinue()
+    } catch (error) { setMessage(error.message || 'No fue posible guardar el formulario de SPA.') }
+    finally { setSaving(false) }
+  }
+  if (!data) return <div className="form-loading">{message || 'Cargando formulario de SPA…'}</div>
+  return <div className="general-form spa-form">
+    <div className="technical-nav"><button type="button" onClick={onBack}>← Anterior</button><button type="button" onClick={onContinue}>Siguiente →</button></div>
+    <div className="legal-intro"><div><span className="eyebrow">Paso en curso</span><strong>80% completado</strong></div><p>Captura el horario, los servicios de bienestar y las formas de pago.</p></div>
+    <FormSection icon="🧖" title="Centro de Bienestar / SPA"><div className="general-grid"><label className="wide">Horario de servicio *<input {...field('horario')} maxLength="120" required placeholder="Ej. Lunes a domingo de 09:00 a 20:00" /></label></div></FormSection>
+    <FormSection icon="✨" title="Servicios"><p className="section-instruction">Selecciona al menos un servicio.</p><div className="lodging-options">{SPA_SERVICES.map(checkbox)}</div><div className="general-grid"><label className="wide">Otro, ¿Cuál?<textarea {...field('serv_otro')} maxLength="5000" rows="3" /></label></div></FormSection>
+    <FormSection icon="💳" title="Formas de Pago"><div className="lodging-options">{SPA_PAYMENTS.map(checkbox)}</div><div className="general-grid"><label className="wide">Otra, ¿Cuál?<input {...field('otra_tc')} maxLength="120" /></label></div></FormSection>
+    {message && <p className="general-message" role="status">{message}</p>}
+    <button className="save-general" type="button" disabled={saving} onClick={(event) => save(event.currentTarget.form)}>{saving ? 'Guardando SPA…' : 'Guardar y continuar'} <span>→</span></button>
+  </div>
+}
+
+const VENUE_SERVICES = [
+  'Agencia de viajes', 'Jardines', 'Zona de carga y descarga', 'Área de Registro', 'Restaurante', 'Cafetería', 'Arrendadora de auto',
+  'Asesoría financiera', 'Centro de negocios', 'Centro de servicios', 'Edecanes', 'Equipo audiovisual', 'Equipo de Sonido', 'Estacionamiento',
+  'Fax', 'Florería', 'Guía de turismo', 'Colgado de lonas y manta', 'Mobiliario de montaje', 'Montaje de stands', 'Oficinas administrativas',
+  'Renta de bodegas', 'Renta de taquillas', 'Sanitarios', 'Servicio médico', 'Guardería', 'Servicio de taxis', 'Tabaquería', 'Teléfonos',
+  'Traducción simultánea', 'Proveedores', 'Organización de exposiciones', 'Organización de convenciones', 'Oficinas para comité organizador', 'Equipo de cómputo',
+].map((label, index) => [`serv${String(index + 1).padStart(2, '0')}`, label])
+const VENUE_PAYMENTS = [['tc01', 'American Express'], ['tc02', 'Visa'], ['tc03', 'Master Card'], ['tc06', 'Efectivo'], ['tc04', 'Cheque de Viajero'], ['tc05', 'Otra']]
+
+function RecintoStep({ onContinue, onBack }) {
+  const [data, setData] = useState(null)
+  const [message, setMessage] = useState('')
+  const [saving, setSaving] = useState(false)
+  useEffect(() => {
+    const controller = new AbortController()
+    fetch('/api/form/recinto', { signal: controller.signal })
+      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.message); return result })
+      .then((result) => setData(result.data))
+      .catch((error) => { if (error.name !== 'AbortError') setMessage(error.message || 'No fue posible cargar el formulario de recintos.') })
+    return () => controller.abort()
+  }, [])
+  const update = (name, value) => setData((current) => ({ ...current, [name]: value }))
+  const field = (name) => ({ value: data[name] ?? '', onChange: (event) => update(name, event.target.value) })
+  const checkbox = ([name, label]) => <label className="lodging-option" key={name}><input type="checkbox" checked={Boolean(Number(data[name]))} onChange={(event) => update(name, Number(event.target.checked))} /><span>{label}</span></label>
+  const hasChecked = (options) => options.some(([name]) => Number(data[name]) === 1)
+  const save = async (form) => {
+    if (form && !form.reportValidity()) return
+    if (!hasChecked(VENUE_SERVICES)) { setMessage('Selecciona al menos un servicio.'); return }
+    if (!hasChecked(VENUE_PAYMENTS) && !String(data.otra_tc || '').trim()) { setMessage('Selecciona o captura al menos una forma de pago.'); return }
+    setSaving(true); setMessage('')
+    try {
+      const response = await fetch('/api/form/recinto', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.message)
+      onContinue()
+    } catch (error) { setMessage(error.message || 'No fue posible guardar el formulario de recintos.') }
+    finally { setSaving(false) }
+  }
+  if (!data) return <div className="form-loading">{message || 'Cargando formulario de recintos…'}</div>
+  return <div className="general-form venue-form">
+    <div className="technical-nav"><button type="button" onClick={onBack}>← Anterior</button><button type="button" onClick={onContinue}>Siguiente →</button></div>
+    <div className="legal-intro"><div><span className="eyebrow">Paso en curso</span><strong>80% completado</strong></div><p>Captura la modalidad, horario, servicios y formas de pago del recinto.</p></div>
+    <FormSection icon="🎙️" title="Recintos y Salones para Eventos"><div className="general-grid"><label>Horario de servicio *<input {...field('horario')} maxLength="120" required /></label><label>Modalidad *<select {...field('modalidad')} required><option value="">Elegir opción…</option><option value="Centros de Congresos y Exposiciones">Centros de Congresos y Exposiciones</option><option value="Congresos y Exposiciones en Hotel">Congresos y Exposiciones en Hotel</option></select></label></div></FormSection>
+    <FormSection icon="✓" title="Servicios"><p className="section-instruction">Selecciona al menos un servicio.</p><div className="lodging-options">{VENUE_SERVICES.map(checkbox)}</div></FormSection>
+    <FormSection icon="💳" title="Formas de Pago"><div className="lodging-options">{VENUE_PAYMENTS.map(checkbox)}</div><div className="general-grid"><label className="wide">Otra, ¿Cuál?<input {...field('otra_tc')} maxLength="120" /></label></div></FormSection>
+    {message && <p className="general-message" role="status">{message}</p>}
+    <button className="save-general" type="button" disabled={saving} onClick={(event) => save(event.currentTarget.form)}>{saving ? 'Guardando recinto…' : 'Guardar y continuar'} <span>→</span></button>
+  </div>
+}
+
+const DIGITAL_PLATFORMS = [['airbnb', 'AirBnB'], ['kayak', 'Kayak'], ['booking', 'Booking'], ['tripadvisor', 'Tripadvisor'], ['trivago', 'Trivago'], ['otrap', 'Otra']]
+const DIGITAL_ROOM_SERVICES = [['cocineta', 'Cocineta'], ['tv', 'Televisión'], ['cajafuerte', 'Caja Fuerte'], ['cocinetaparcial', 'Cocineta Parcial'], ['cable', 'Cable'], ['jacuzzi', 'Jacuzzi'], ['aireacondicionado', 'Aire Acondicionado'], ['telefono', 'Teléfono'], ['aguacaliente', 'Agua Caliente'], ['ventilador', 'Ventilador'], ['minibar', 'Minibar']]
+const DIGITAL_COMMON_SERVICES = [
+  ['cafeteria', 'Cafetería'], ['bar', 'Bar'], ['acceso', 'Acceso para personas con capacidades diferentes'], ['restaurante', 'Restaurante'], ['boutique', 'Boutique'], ['agencia', 'Agencia de Viajes'], ['cocinaindustrial', 'Cocina Industrial'], ['regalo', 'Regalos'], ['spa', 'Spa'], ['banquete', 'Banquetes y Convenciones'], ['tabaqueria', 'Tabaquería'], ['room', 'Room Service'], ['salon', 'Salones de Eventos'], ['internet', 'Internet'], ['floreria', 'Florería'], ['alberca', 'Alberca'], ['sala', 'Sala de Belleza y Peluquería'], ['arrendadora', 'Arrendadora de Vehículos'], ['chapoteadero', 'Chapoteadero'], ['gimnasio', 'Gimnasio'], ['golf', 'Campo de Golf'], ['area', 'Áreas Verdes'], ['lavanderia', 'Lavandería'], ['tenis', 'Cancha de Tenis'], ['juego', 'Juegos Infantiles'], ['tintoreria', 'Tintorería'], ['ejecutivo', 'Centro Ejecutivo'], ['actividad', 'Actividades Recreativas'], ['elevador', 'Elevador'], ['estacionamiento', 'Estacionamiento'],
+]
+const DIGITAL_CERTIFICATIONS = [['h', 'Distintivo H'], ['m', 'Distintivo M'], ['tesoros', 'Tesoros de Guanajuato'], ['iso', 'ISO'], ['puntolimpio', 'Punto Limpio'], ['anfitrion', 'Gran Anfitrión'], ['estandares', 'Estándares de Competencia Laboral'], ['otro', 'Otra']]
+
+function HospedajeDigitalStep({ onContinue, onBack }) {
+  const [data, setData] = useState(null)
+  const [message, setMessage] = useState('')
+  const [saving, setSaving] = useState(false)
+  useEffect(() => {
+    const controller = new AbortController()
+    fetch('/api/form/hospedaje-digital', { signal: controller.signal }).then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.message); return result }).then((result) => setData(result.data)).catch((error) => { if (error.name !== 'AbortError') setMessage(error.message || 'No fue posible cargar el formulario de hospedaje digital.') })
+    return () => controller.abort()
+  }, [])
+  const update = (name, value) => setData((current) => ({ ...current, [name]: value }))
+  const field = (name) => ({ value: data[name] ?? '', onChange: (event) => update(name, event.target.value) })
+  const checkbox = ([name, label]) => <label className="lodging-option" key={name}><input type="checkbox" checked={Boolean(Number(data[name]))} onChange={(event) => update(name, Number(event.target.checked))} /><span>{label}</span></label>
+  const save = async (form) => {
+    if (form && !form.reportValidity()) return
+    if (!DIGITAL_PLATFORMS.some(([name]) => Number(data[name]) === 1)) { setMessage('Selecciona al menos una plataforma digital.'); return }
+    setSaving(true); setMessage('')
+    try {
+      const response = await fetch('/api/form/hospedaje-digital', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) })
+      const result = await response.json(); if (!response.ok) throw new Error(result.message); onContinue()
+    } catch (error) { setMessage(error.message || 'No fue posible guardar el formulario de hospedaje digital.') }
+    finally { setSaving(false) }
+  }
+  if (!data) return <div className="form-loading">{message || 'Cargando formulario de hospedaje digital…'}</div>
+  return <div className="general-form digital-lodging-form">
+    <div className="technical-nav"><button type="button" onClick={onBack}>← Anterior</button><button type="button" onClick={onContinue}>Siguiente →</button></div>
+    <div className="legal-intro"><div><span className="eyebrow">Paso en curso</span><strong>80% completado</strong></div><p>Captura la oferta de alojamiento, plataformas, servicios y seguridad.</p></div>
+    <FormSection icon="🏠" title="Hospedaje mediante Plataformas Digitales"><div className="general-grid"><label>Tipo de Alojamiento *<select {...field('categoria')} required><option value="">Elegir opción…</option><option value="1">Alojamiento completo</option><option value="2">Habitación privada</option><option value="3">Habitación compartida</option></select></label><label>Alojamiento que se ofrece *<input {...field('establecimiento')} maxLength="50" required /></label><label>Número de Habitaciones *<input {...field('cuartos')} type="number" min="1" max="999" required /></label><label>Número de camas que pueden utilizar los huéspedes *<input {...field('pisos')} type="number" min="1" max="99" required /></label></div></FormSection>
+    <FormSection icon="📱" title="Plataformas Digitales"><div className="lodging-options">{DIGITAL_PLATFORMS.map(checkbox)}</div><div className="general-grid"><label className="wide">Otra, ¿Cuál?<input {...field('otradigital')} maxLength="50" /></label></div></FormSection>
+    <FormSection icon="🛏️" title="Servicios en las Habitaciones"><div className="lodging-options">{DIGITAL_ROOM_SERVICES.map(checkbox)}</div></FormSection>
+    <FormSection icon="🏨" title="Servicios Comunes"><div className="lodging-options">{DIGITAL_COMMON_SERVICES.map(checkbox)}</div></FormSection>
+    <FormSection icon="🏅" title="Certificaciones"><div className="lodging-options">{DIGITAL_CERTIFICATIONS.map(checkbox)}</div><div className="general-grid"><label className="wide">Otra, ¿Cuál?<input {...field('otracertificacion')} maxLength="50" /></label></div></FormSection>
+    <FormSection icon="🚗" title="Estacionamiento y Seguridad"><div className="general-grid"><label>Número de Cajones *<input {...field('nocajon')} type="number" min="0" max="9999" required /></label><label>Tipo de Estacionamiento *<select {...field('tipocajon')} required><option value="">Elegir opción…</option><option value="Interno">Interno</option><option value="Externo">Externo</option></select></label><label>¿Cuenta con seguro de responsabilidad? *<select {...field('seguro')} required><option value="">Elegir opción…</option><option value="0">No</option><option value="1">Sí</option></select></label>{Number(data.seguro) === 1 && <label>¿Cuál aseguradora? *<input {...field('aseguradora')} maxLength="50" required /></label>}<label>¿Cuenta con unidades y espacios para paraderos? *<select {...field('unidad')} required><option value="">Elegir opción…</option><option value="0">No</option><option value="1">Sí</option></select></label></div></FormSection>
+    {message && <p className="general-message" role="status">{message}</p>}
+    <button className="save-general" type="button" disabled={saving} onClick={(event) => save(event.currentTarget.form)}>{saving ? 'Guardando hospedaje digital…' : 'Guardar y continuar'} <span>→</span></button>
   </div>
 }
 
@@ -1188,7 +1655,7 @@ function MyRecordsModal({ onClose, onSelect }) {
       <header><span className="step-pill">Mi cuenta</span><h2 id="records-title">Mis registros</h2><p>Administra los establecimientos asociados a tu correo.</p></header>
       {message && <p className="general-message" role="status">{message}</p>}
       {!records ? <div className="form-loading">Cargando establecimientos…</div> : <div className="records-list">{records.map((record) => <article className={record.actual ? 'current' : ''} key={record.clave}>
-        <div className="record-main"><span className="record-icon">{GIRO_ICONS[record.id_giro] || '📍'}</span><div><strong>{record.nombre_comercial || 'Establecimiento sin nombre'}</strong><span>{record.clave} · {record.giro || 'Giro sin especificar'}</span><small>{record.municipio || 'Municipio sin especificar'} · {record.porcentaje_registro || 0}% completado</small></div>{record.actual && <b>Actual</b>}</div>
+        <div className="record-main"><span className="record-icon">{GIRO_ICONS[record.id_giro] || '📍'}</span><div><strong>{record.nombre_comercial || 'Establecimiento sin nombre'}</strong><span>{record.clave} · {cleanCatalogText(record.giro) || 'Giro sin especificar'}</span><small>{record.municipio || 'Municipio sin especificar'} · {record.porcentaje_registro || 0}% completado</small></div>{record.actual && <b>Actual</b>}</div>
         <div className="record-actions">
           <button type="button" title="Editar establecimiento" aria-label={`Editar ${record.nombre_comercial}`} onClick={() => selectRecord(record)}>✎</button>
           <button type="button" title="Ver formato" aria-label={`Ver formato de ${record.nombre_comercial}`} onClick={() => showFormat(record)}>▤</button>
@@ -1203,7 +1670,7 @@ function AuthenticatedWizard({ user, onLogout, onUserChange }) {
   const [step, setStep] = useState(0)
   const [showRecords, setShowRecords] = useState(false)
   const [showNewRegistration, setShowNewRegistration] = useState(false)
-  const giroStepNames = { 2: 'Formulario de Agencia de Viajes', 3: 'Formulario de Guía de Turistas', 4: 'Formulario de Operador de Eventos', 5: 'Formulario de Alimentos y Bebidas', 6: 'Formulario de Campo de Golf', 7: 'Formulario de Arte Popular y Productos', 9: 'Formulario de Arrendamiento de Autos', 10: 'Formulario de Espacios Turísticos', 11: 'Formulario de Operador Turístico' }
+  const giroStepNames = { 2: 'Formulario de Agencia de Viajes', 3: 'Formulario de Guía de Turistas', 4: 'Formulario de Operador de Eventos', 5: 'Formulario de Alimentos y Bebidas', 6: 'Formulario de Campo de Golf', 7: 'Formulario de Arte Popular y Productos', 9: 'Formulario de Arrendamiento de Autos', 10: 'Formulario de Espacios Turísticos', 11: 'Formulario de Operador Turístico', 12: 'Formulario de Balnearios y Parques Acuáticos', 13: 'Formulario de Capacitación Turística', 14: 'Formulario de Deporte y Recreación', 15: 'Formulario de Centro de Bienestar / SPA', 16: 'Formulario de Recintos y Salones para Eventos', 17: 'Formulario de Hospedaje mediante Plataformas Digitales' }
   const skipsGiroForm = Number(user.giro) === 8
   const wizardSteps = skipsGiroForm
     ? WIZARD_STEPS.filter((_, index) => index !== 4)
@@ -1250,6 +1717,12 @@ function AuthenticatedWizard({ user, onLogout, onUserChange }) {
           {step === 4 && Number(user.giro) === 9 && <ArrendadoraStep onBack={() => setStep(3)} onContinue={() => setStep(5)} />}
           {step === 4 && Number(user.giro) === 10 && <ParquesStep onBack={() => setStep(3)} onContinue={() => setStep(5)} />}
           {step === 4 && Number(user.giro) === 11 && <AuxTuristicoStep onBack={() => setStep(3)} onContinue={() => setStep(5)} />}
+          {step === 4 && Number(user.giro) === 12 && <BalneariosStep onBack={() => setStep(3)} onContinue={() => setStep(5)} />}
+          {step === 4 && Number(user.giro) === 13 && <CapacitacionStep onBack={() => setStep(3)} onContinue={() => setStep(5)} />}
+          {step === 4 && Number(user.giro) === 14 && <DeporteStep onBack={() => setStep(3)} onContinue={() => setStep(5)} />}
+          {step === 4 && Number(user.giro) === 15 && <SpaStep onBack={() => setStep(3)} onContinue={() => setStep(5)} />}
+          {step === 4 && Number(user.giro) === 16 && <RecintoStep onBack={() => setStep(3)} onContinue={() => setStep(5)} />}
+          {step === 4 && Number(user.giro) === 17 && <HospedajeDigitalStep onBack={() => setStep(3)} onContinue={() => setStep(5)} />}
           {step === experienceStep && <ExperienciaStep onBack={() => setStep(skipsGiroForm ? 3 : 4)} onComplete={() => setShowRecords(true)} />}
         </form>
       </section>
@@ -1291,7 +1764,7 @@ function MapPanel() {
   }
 
   return <main className="map-panel">
-    <div className="map-header"><div><span className="eyebrow map-eyebrow">Explora la red</span><h2>Una entrada más clara, actual y poderosa para el RET.</h2></div><label className="search-box giro-select"><select value={selectedGiro} onChange={changeGiro} aria-label="Seleccionar giro">{giros.length === 0 && <option value="1">🏨 01. Hospedaje</option>}{giros.map((item) => <option key={item.id_giro} value={item.id_giro}>{GIRO_ICONS[item.id_giro] || '📍'} {item.giro}</option>)}</select></label></div>
+    <div className="map-header"><div><span className="eyebrow map-eyebrow">Explora la red</span><h2>Una entrada más clara, actual y poderosa para el RET.</h2></div><label className="search-box giro-select"><select value={selectedGiro} onChange={changeGiro} aria-label="Seleccionar giro">{giros.length === 0 && <option value="1">🏨 01. Hospedaje</option>}{giros.map((item) => <option key={item.id_giro} value={item.id_giro}>{GIRO_ICONS[item.id_giro] || '📍'} {cleanCatalogText(item.giro)}</option>)}</select></label></div>
     <div className="map-shell">
       <MapContainer center={DEFAULT_CENTER} zoom={5} className="map">
         <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
