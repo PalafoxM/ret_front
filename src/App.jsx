@@ -4,6 +4,7 @@ import { MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from 're
 import { divIcon } from 'leaflet'
 import Swal from 'sweetalert2'
 import 'sweetalert2/dist/sweetalert2.min.css'
+import 'bootstrap/dist/css/bootstrap.min.css'
 import 'leaflet/dist/leaflet.css'
 import privacyNotice from './assets/aviso_de_privacidad_integral_ret.pdf'
 import logoRet from './assets/logo_ret_altb.png'
@@ -1871,6 +1872,11 @@ function AdminDashboard({ admin, onLogout }) {
   const [dashboard, setDashboard] = useState(null)
   const [message, setMessage] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [records, setRecords] = useState({ rows: [], total: 0, page: 1, pages: 1, pageSize: 10 })
+  const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [tableLoading, setTableLoading] = useState(true)
   useEffect(() => {
     const controller = new AbortController()
     apiFetch('/api/admin/dashboard', { signal: controller.signal })
@@ -1879,12 +1885,24 @@ function AdminDashboard({ admin, onLogout }) {
       .catch((error) => { if (error.name !== 'AbortError') setMessage(safeErrorMessage(error, 'No fue posible cargar el dashboard.')) })
     return () => controller.abort()
   }, [])
+  useEffect(() => {
+    const controller = new AbortController()
+    const timer = setTimeout(() => {
+      setTableLoading(true)
+      const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize), search, status: statusFilter })
+      apiFetch(`/api/admin/tramites?${query}`, { signal: controller.signal })
+        .then((response) => response.json())
+        .then((result) => setRecords(result.data))
+        .catch((error) => { if (error.name !== 'AbortError') setMessage(safeErrorMessage(error, 'No fue posible cargar los trámites.')) })
+        .finally(() => { if (!controller.signal.aborted) setTableLoading(false) })
+    }, 250)
+    return () => { clearTimeout(timer); controller.abort() }
+  }, [page, pageSize, search, statusFilter])
   const metrics = dashboard?.metrics || {}
   const formatNumber = (number) => Number(number || 0).toLocaleString('es-MX')
   const maxGiro = Math.max(...(dashboard?.byGiro || []).map((item) => Number(item.total)), 1)
   const maxMunicipio = Math.max(...(dashboard?.byMunicipio || []).map((item) => Number(item.total)), 1)
   const maxActivity = Math.max(...(dashboard?.activity || []).map((item) => Number(item.total)), 1)
-  const recent = (dashboard?.recent || []).filter((item) => !statusFilter || item.estatus === statusFilter)
   const metricCards = [
     ['Registros activos', metrics.activos, '◉', 'active'], ['Registros de hoy', metrics.hoy, '+', 'today'],
     ['Pendientes', metrics.pendientes, '◷', 'pending'], ['Concluidos', metrics.concluidos, '✓', 'complete'],
@@ -1906,8 +1924,12 @@ function AdminDashboard({ admin, onLogout }) {
           <RankingCard title="Registros por municipio" items={dashboard.byMunicipio} maximum={maxMunicipio} />
         </div>
         <section className="admin-panel admin-activity"><header><span className="eyebrow">Tendencia reciente</span><h2>Actividad de los últimos 7 días</h2></header><div className="activity-chart">{(dashboard.activity || []).map((item) => <div className="activity-day" key={item.date}><strong>{formatNumber(item.total)}</strong><div><i style={{ height: `${Math.max((Number(item.total) / maxActivity) * 100, item.total ? 8 : 2)}%` }} /></div><span>{new Date(`${item.date}T12:00:00`).toLocaleDateString('es-MX', { weekday: 'short' }).replace('.', '')}</span></div>)}</div></section>
-        <section className="admin-panel admin-shortcuts"><header><span className="eyebrow">Navegación</span><h2>Accesos rápidos</h2></header><div>{quickLinks.map(([status, label, total]) => <button type="button" className={statusFilter === status ? 'selected' : ''} onClick={() => { setStatusFilter(statusFilter === status ? '' : status); document.getElementById('admin-recent')?.scrollIntoView({ behavior: 'smooth' }) }} key={status}><span>{label}</span><strong>{formatNumber(total)}</strong><b aria-hidden="true">→</b></button>)}</div></section>
-        <section className="admin-recent" id="admin-recent"><header><div><span className="eyebrow">Trámites visibles</span><h2>{statusFilter ? `Últimos registros: ${statusFilter}` : 'Últimos 8 trámites visibles'}</h2></div>{statusFilter && <button className="clear-admin-filter" type="button" onClick={() => setStatusFilter('')}>Ver todos</button>}</header><div className="admin-table-wrap"><table><thead><tr><th>Clave RET</th><th>Nombre comercial</th><th>Giro</th><th>Municipio</th><th>Correo</th><th>Fecha de registro</th><th>Estatus</th></tr></thead><tbody>{recent.map((item) => <tr key={item.clave}><td><strong>{item.clave || '—'}</strong></td><td>{item.nombre_comercial || 'Sin nombre'}</td><td>{cleanCatalogText(item.giro) || 'Sin giro'}</td><td>{item.municipio || 'Sin municipio'}</td><td>{item.correo || '—'}</td><td>{item.fecha_registro ? new Date(item.fecha_registro).toLocaleDateString('es-MX') : '—'}</td><td><span className={`admin-status ${item.estatus?.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')}`}>{item.estatus}</span></td></tr>)}{recent.length === 0 && <tr><td colSpan="7" className="admin-empty">No hay trámites recientes con este estatus.</td></tr>}</tbody></table></div></section>
+        <section className="admin-panel admin-shortcuts"><header><span className="eyebrow">Navegación</span><h2>Accesos rápidos</h2></header><div>{quickLinks.map(([status, label, total]) => <button type="button" className={statusFilter === status ? 'selected' : ''} onClick={() => { setStatusFilter(statusFilter === status ? '' : status); setPage(1); document.getElementById('admin-records')?.scrollIntoView({ behavior: 'smooth' }) }} key={status}><span>{label}</span><strong>{formatNumber(total)}</strong><b aria-hidden="true">→</b></button>)}</div></section>
+        <section className="admin-recent" id="admin-records"><header><div><span className="eyebrow">Trámites visibles</span><h2>{statusFilter ? `Registros: ${statusFilter}` : 'Listado de trámites'}</h2></div>{statusFilter && <button className="clear-admin-filter" type="button" onClick={() => { setStatusFilter(''); setPage(1) }}>Ver todos</button>}</header>
+          <div className="admin-table-tools"><label>Mostrar <select className="form-select form-select-sm" value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1) }}><option value="10">10</option><option value="25">25</option><option value="50">50</option></select> registros</label><label className="admin-search">Buscar:<input className="form-control form-control-sm" type="search" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} placeholder="Clave, nombre, correo…" /></label></div>
+          <div className="admin-table-wrap table-responsive"><table className="table table-striped table-hover align-middle mb-0"><thead className="table-light"><tr><th>Clave RET</th><th>Nombre comercial</th><th>Giro</th><th>Municipio</th><th>Correo</th><th>Fecha de registro</th><th>Estatus</th></tr></thead><tbody>{tableLoading ? <tr><td colSpan="7" className="admin-empty">Cargando registros…</td></tr> : records.rows.map((item) => <tr key={item.clave}><td><strong>{item.clave || '—'}</strong></td><td>{item.nombre_comercial || 'Sin nombre'}</td><td>{cleanCatalogText(item.giro) || 'Sin giro'}</td><td>{item.municipio || 'Sin municipio'}</td><td>{item.correo || '—'}</td><td>{item.fecha_registro ? new Date(item.fecha_registro).toLocaleDateString('es-MX') : '—'}</td><td><span className={`admin-status ${item.estatus?.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')}`}>{item.estatus}</span></td></tr>)}{!tableLoading && records.rows.length === 0 && <tr><td colSpan="7" className="admin-empty">No se encontraron trámites.</td></tr>}</tbody></table></div>
+          <footer className="admin-table-footer"><span>Mostrando {records.total ? ((records.page - 1) * records.pageSize) + 1 : 0} a {Math.min(records.page * records.pageSize, records.total)} de {formatNumber(records.total)} registros</span><nav aria-label="Paginación de trámites"><ul className="pagination pagination-sm mb-0"><li className={`page-item ${page <= 1 ? 'disabled' : ''}`}><button className="page-link" type="button" onClick={() => setPage((current) => Math.max(1, current - 1))}>Anterior</button></li>{Array.from({ length: Math.min(5, records.pages) }, (_, index) => { const start = Math.max(1, Math.min(page - 2, records.pages - 4)); const number = start + index; return <li className={`page-item ${number === page ? 'active' : ''}`} key={number}><button className="page-link" type="button" onClick={() => setPage(number)}>{number}</button></li> })}<li className={`page-item ${page >= records.pages ? 'disabled' : ''}`}><button className="page-link" type="button" onClick={() => setPage((current) => Math.min(records.pages, current + 1))}>Siguiente</button></li></ul></nav></footer>
+        </section>
       </>}
     </section>
   </main>
