@@ -19,9 +19,75 @@ import './ExperienceForm.css'
 import './Records.css'
 import './Theme.css'
 import './Logo.css'
+import './Admin.css'
 
 const DEFAULT_CENTER = [23.6345, -102.5528]
-const ESTABLECIMIENTO_TOKEN = import.meta.env.TOKEN_ESTABLECIMIENTO
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
+const STATUS_MESSAGES = {
+  400: 'Revisa la información enviada.',
+  401: 'Tu sesión ya no es válida. Inicia sesión nuevamente.',
+  403: 'No tienes permisos para realizar esta acción.',
+  404: 'No se encontró la información solicitada.',
+  409: 'La operación no pudo completarse porque existe un conflicto.',
+  413: 'El archivo es demasiado grande.',
+  422: 'Revisa los campos obligatorios.',
+  429: 'Demasiadas solicitudes. Intenta más tarde.',
+}
+
+function readCookie(name) {
+  const item = document.cookie.split('; ').find((entry) => entry.startsWith(`${name}=`))
+  return item ? decodeURIComponent(item.slice(name.length + 1)) : ''
+}
+
+function readCsrfToken() {
+  const metaToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+  return metaToken || readCookie('ret_csrf')
+}
+
+let csrfRequest = null
+
+async function ensureCsrfToken() {
+  const existingToken = readCsrfToken()
+  if (existingToken) return existingToken
+  if (!csrfRequest) {
+    csrfRequest = window.fetch('/api/auth/csrf', { credentials: 'same-origin', cache: 'no-store' })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => null)
+        if (!response.ok) throw Object.assign(new Error('No fue posible iniciar la validación de seguridad.'), { status: response.status })
+        return payload?.data?.csrfToken || readCsrfToken()
+      })
+      .finally(() => { csrfRequest = null })
+  }
+  const token = await csrfRequest
+  if (!token) throw new Error('No fue posible obtener la validación de seguridad.')
+  return token
+}
+
+async function apiFetch(input, init = {}) {
+  const method = String(init.method || 'GET').toUpperCase()
+  const headers = new Headers(init.headers || {})
+  if (!SAFE_METHODS.has(method)) {
+    const csrfToken = await ensureCsrfToken()
+    headers.set('X-CSRF-Token', csrfToken)
+  }
+  const response = await window.fetch(input, { ...init, credentials: 'same-origin', headers })
+  if (!response.ok) {
+    const payload = await response.clone().json().catch(() => null)
+    const serverMessage = typeof payload?.message === 'string' ? payload.message.trim() : ''
+    throw Object.assign(new Error(serverMessage || `HTTP ${response.status}`), {
+      status: response.status,
+      serverMessage,
+    })
+  }
+  return response
+}
+
+function safeErrorMessage(error, fallback) {
+  if (error?.name === 'AbortError') return fallback
+  if (error?.serverMessage) return error.serverMessage
+  return STATUS_MESSAGES[Number(error?.status)] || fallback
+}
+
 const cleanCatalogText = (value) => {
   if (typeof value !== 'string') return value
   const entities = {
@@ -79,8 +145,8 @@ function RegistrationModal({ onClose, accountEmail = '', onRegistered }) {
   useEffect(() => {
     const controller = new AbortController()
     Promise.all([
-      fetch('/api/giros', { signal: controller.signal }).then((response) => response.json()),
-      fetch('/api/municipios', { signal: controller.signal }).then((response) => response.json()),
+      apiFetch('/api/giros', { signal: controller.signal }).then((response) => response.json()),
+      apiFetch('/api/municipios', { signal: controller.signal }).then((response) => response.json()),
     ]).then(([girosResponse, municipiosResponse]) => {
       setGiros(Array.isArray(girosResponse.data) ? girosResponse.data : [])
       setMunicipios(Array.isArray(municipiosResponse.data) ? municipiosResponse.data : [])
@@ -110,16 +176,16 @@ function RegistrationModal({ onClose, accountEmail = '', onRegistered }) {
     payload.privacidad = formData.has('privacidad')
 
     try {
-      const response = await fetch('/api/registro', {
+      const response = await apiFetch('/api/registro', {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          ...(!usesExistingAccount && { 'x-establecimiento-token': ESTABLECIMIENTO_TOKEN }),
+          'X-CSRF-Token': readCsrfToken(),
         },
         body: JSON.stringify(payload),
       })
       const result = await response.json()
-      if (!response.ok) throw new Error(result.message || 'No fue posible completar el registro.')
+      if (!response.ok) throw new Error()
       if (result.data?.existingAccount && onRegistered) {
         await onRegistered(result.data)
         return
@@ -129,7 +195,7 @@ function RegistrationModal({ onClose, accountEmail = '', onRegistered }) {
       await Swal.fire({
         icon: 'error',
         title: 'No fue posible completar el registro',
-        text: error.message || 'Ocurrió un error inesperado. Intenta nuevamente.',
+          text: safeErrorMessage(error, 'Ocurrió un error inesperado. Intenta nuevamente.'),
         confirmButtonText: 'Entendido',
         confirmButtonColor: '#0878b9',
       })
@@ -151,9 +217,9 @@ function RegistrationModal({ onClose, accountEmail = '', onRegistered }) {
         <p>{registrationResult.existingAccount
           ? 'El establecimiento quedó asociado a tu cuenta y ya aparece en Mis registros. No se generaron nuevas credenciales.'
           : registrationResult.emailSent
-          ? 'Enviamos estas credenciales al correo indicado. También puedes guardarlas ahora.'
-          : 'No fue posible enviar el correo. Guarda estas credenciales; la contraseña temporal solamente se mostrará en este momento.'}</p>
-        <dl><div><dt>Clave RET del establecimiento</dt><dd>{registrationResult.clave}</dd></div>{!registrationResult.existingAccount && <div><dt>Contraseña temporal</dt><dd>{registrationResult.temporaryPassword}</dd></div>}</dl>
+          ? 'Enviamos las instrucciones de acceso al correo indicado. Si no las encuentras, usa la opción «Olvidé mi contraseña».'
+          : 'No fue posible enviar el correo. Usa la opción «Olvidé mi contraseña» para solicitar nuevamente las instrucciones de acceso.'}</p>
+        <dl><div><dt>Clave RET del establecimiento</dt><dd>{registrationResult.clave}</dd></div></dl>
         <button className="registration-submit" type="button" onClick={() => onRegistered ? onRegistered(registrationResult) : onClose()}>Finalizar</button>
       </div> : <form className="registration-form" onSubmit={submitRegistration}>
         <label className="registration-field registration-wide">Registro Federal de Contribuyentes (RFC)<input name="rfc" placeholder="Ej. ABCD010203EF4" minLength="12" maxLength="13" required /></label>
@@ -170,8 +236,7 @@ function RegistrationModal({ onClose, accountEmail = '', onRegistered }) {
   </div>, document.body)
 }
 
-function LoginPanel({ onLogin }) {
-  const [showPassword, setShowPassword] = useState(false)
+function LoginPanel({ onLogin, onAdminLogin }) {
   const [message, setMessage] = useState('')
   const [showRegistration, setShowRegistration] = useState(false)
   const closeRegistration = useCallback(() => setShowRegistration(false), [])
@@ -197,16 +262,16 @@ function LoginPanel({ onLogin }) {
       },
       preConfirm: async (value) => {
         try {
-          const response = await fetch('/api/auth/recuperar-password', {
+          const response = await apiFetch('/api/auth/recuperar-password', {
             method: 'POST',
-            headers: { 'content-type': 'application/json' },
+            headers: { 'content-type': 'application/json', 'X-CSRF-Token': readCsrfToken() },
             body: JSON.stringify({ email: String(value).trim().toLowerCase() }),
           })
           const payload = await response.json()
-          if (!response.ok) throw new Error(payload.message || 'No fue posible procesar la solicitud')
+          if (!response.ok) throw new Error()
           return payload
         } catch (error) {
-          Swal.showValidationMessage(error.message || 'No fue posible conectar con el servidor')
+          Swal.showValidationMessage(safeErrorMessage(error, 'No fue posible conectar con el servidor'))
           return false
         }
       },
@@ -215,7 +280,7 @@ function LoginPanel({ onLogin }) {
       await Swal.fire({
         icon: 'success',
         title: 'Solicitud recibida',
-        text: result.value?.message || 'Si el correo está registrado, recibirás nuevas credenciales.',
+        text: 'Si el correo está registrado, recibirás instrucciones para continuar.',
         confirmButtonColor: '#0878b9',
       })
     }
@@ -225,20 +290,46 @@ function LoginPanel({ onLogin }) {
     setMessage('')
     const formData = new FormData(event.currentTarget)
     try {
-      const response = await fetch('/api/auth/login', {
+      const response = await apiFetch('/api/auth/login', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', 'X-CSRF-Token': readCsrfToken() },
         body: JSON.stringify({
           clave: formData.get('clave'),
           password: formData.get('password'),
         }),
       })
       const result = await response.json()
-      if (!response.ok) throw new Error(result.message || 'No fue posible iniciar sesión.')
+      if (!response.ok) throw new Error()
       onLogin(result.data)
     } catch (error) {
-      setMessage(error.message)
+      setMessage(safeErrorMessage(error, 'No fue posible iniciar sesión.'))
     }
+  }
+
+  const adminLogin = async () => {
+    const result = await Swal.fire({
+      title: 'Acceso administrativo',
+      html: '<input id="admin-email" class="swal2-input" type="email" autocomplete="username" placeholder="Correo electrónico"><input id="admin-password" class="swal2-input" type="password" autocomplete="current-password" placeholder="Contraseña">',
+      showCancelButton: true,
+      showLoaderOnConfirm: true,
+      confirmButtonText: 'Ingresar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#0878b9',
+      allowOutsideClick: () => !Swal.isLoading(),
+      preConfirm: async () => {
+        const email = Swal.getPopup()?.querySelector('#admin-email')?.value.trim().toLowerCase() || ''
+        const password = Swal.getPopup()?.querySelector('#admin-password')?.value || ''
+        if (!email || !password) { Swal.showValidationMessage('Captura correo y contraseña'); return false }
+        try {
+          const response = await apiFetch('/api/admin/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password }) })
+          return (await response.json()).data
+        } catch (error) {
+          Swal.showValidationMessage(safeErrorMessage(error, 'No fue posible iniciar la sesión administrativa.'))
+          return false
+        }
+      },
+    })
+    if (result.isConfirmed && result.value) onAdminLogin(result.value)
   }
 
   return <aside className="login-panel">
@@ -254,9 +345,10 @@ function LoginPanel({ onLogin }) {
         <label htmlFor="clave">Clave RET</label>
         <div className="field"><span aria-hidden="true">🔑</span><input id="clave" name="clave" type="text" placeholder="RET01010023" autoComplete="username" minLength="9" maxLength="17" required /></div>
         <div className="password-row"><label htmlFor="password">Contraseña</label><button className="text-button" type="button" onClick={recoverPassword}>Olvidé mi contraseña</button></div>
-        <div className="field"><span aria-hidden="true">◇</span><input id="password" name="password" type={showPassword ? 'text' : 'password'} placeholder="Tu contraseña" autoComplete="current-password" required /><button className="show-password" type="button" onClick={() => setShowPassword((v) => !v)} aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}>{showPassword ? '◉' : '◎'}</button></div>
+        <div className="field"><span aria-hidden="true">◇</span><input id="password" name="password" type="password" placeholder="Tu contraseña" autoComplete="current-password" required /></div>
         <button className="primary-button" type="submit">Iniciar sesión <span aria-hidden="true">→</span></button>
         <button className="secondary-button" type="button" onClick={() => setShowRegistration(true)}>Registrarse <span aria-hidden="true">+</span></button>
+        <button className="admin-access-button" type="button" onClick={adminLogin}>Acceso administrativo</button>
         {message && <p className="form-message" role="status">{message}</p>}
       </form>
     </div>
@@ -282,10 +374,10 @@ function DatosGeneralesStep({ user, onContinue }) {
 
   useEffect(() => {
     const controller = new AbortController()
-    fetch('/api/form/datos-generales', { signal: controller.signal })
-      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.message); return result })
+    apiFetch('/api/form/datos-generales', { signal: controller.signal })
+      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(); return result })
       .then((result) => { setData(result.data); setSubrubros(result.subrubros || []) })
-      .catch((error) => { if (error.name !== 'AbortError') setMessage(error.message || 'No fue posible cargar el formulario.') })
+      .catch((error) => { if (error.name !== 'AbortError') setMessage(safeErrorMessage(error, 'No fue posible cargar el formulario.')) })
     return () => controller.abort()
   }, [])
 
@@ -299,13 +391,13 @@ function DatosGeneralesStep({ user, onContinue }) {
     setSaving(true)
     setMessage('')
     try {
-      const response = await fetch('/api/form/datos-generales', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.message)
-      setMessage(result.message)
+      const response = await apiFetch('/api/form/datos-generales', { method: 'PUT', headers: { 'content-type': 'application/json', 'X-CSRF-Token': readCsrfToken() }, body: JSON.stringify(data) })
+      await response.json()
+      if (!response.ok) throw new Error()
+      setMessage('Datos generales guardados correctamente.')
       onContinue()
     } catch (error) {
-      setMessage(error.message || 'No fue posible guardar los datos.')
+      setMessage(safeErrorMessage(error, 'No fue posible guardar los datos.'))
     } finally {
       setSaving(false)
     }
@@ -341,8 +433,8 @@ function DatosTecnicosStep({ onContinue, onBack }) {
 
   useEffect(() => {
     const controller = new AbortController()
-    fetch('/api/form/datos-tecnicos', { signal: controller.signal })
-      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.message); return result })
+    apiFetch('/api/form/datos-tecnicos', { signal: controller.signal })
+      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(); return result })
       .then((result) => {
         const normalized = { ...result.data }
         for (const name of ['inst_disca', 'lgbttit', 'pet_friendly']) {
@@ -351,7 +443,7 @@ function DatosTecnicosStep({ onContinue, onBack }) {
         }
         setData(normalized)
       })
-      .catch((error) => { if (error.name !== 'AbortError') setMessage(error.message || 'No fue posible cargar los datos técnicos.') })
+      .catch((error) => { if (error.name !== 'AbortError') setMessage(safeErrorMessage(error, 'No fue posible cargar los datos técnicos.')) })
     return () => controller.abort()
   }, [])
 
@@ -365,13 +457,13 @@ function DatosTecnicosStep({ onContinue, onBack }) {
     setSaving(true)
     setMessage('')
     try {
-      const response = await fetch('/api/form/datos-tecnicos', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.message)
-      setMessage(result.message)
+      const response = await apiFetch('/api/form/datos-tecnicos', { method: 'PUT', headers: { 'content-type': 'application/json', 'X-CSRF-Token': readCsrfToken() }, body: JSON.stringify(data) })
+      await response.json()
+      if (!response.ok) throw new Error()
+      setMessage('Datos técnicos guardados correctamente.')
       onContinue()
     } catch (error) {
-      setMessage(error.message || 'No fue posible guardar los datos técnicos.')
+      setMessage(safeErrorMessage(error, 'No fue posible guardar los datos técnicos.'))
     } finally {
       setSaving(false)
     }
@@ -419,10 +511,10 @@ function DatosLegalesStep({ onContinue, onBack }) {
 
   useEffect(() => {
     const controller = new AbortController()
-    fetch('/api/form/datos-legales', { signal: controller.signal })
-      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.message); return result })
+    apiFetch('/api/form/datos-legales', { signal: controller.signal })
+      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(); return result })
       .then((result) => setMetadata(result.data))
-      .catch((error) => { if (error.name !== 'AbortError') setMessage(error.message || 'No fue posible cargar el expediente legal.') })
+      .catch((error) => { if (error.name !== 'AbortError') setMessage(safeErrorMessage(error, 'No fue posible cargar el expediente legal.')) })
     return () => controller.abort()
   }, [])
 
@@ -449,13 +541,13 @@ function DatosLegalesStep({ onContinue, onBack }) {
     const formData = new FormData()
     for (const [name, file] of Object.entries(selectedFiles)) formData.append(name, file)
     try {
-      const response = await fetch('/api/form/datos-legales', { method: 'POST', body: formData })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.message)
-      setMessage(result.message)
+      const response = await apiFetch('/api/form/datos-legales', { method: 'POST', headers: { 'X-CSRF-Token': readCsrfToken() }, body: formData })
+      await response.json()
+      if (!response.ok) throw new Error()
+      setMessage('Documentos guardados correctamente.')
       onContinue()
     } catch (error) {
-      setMessage(error.message || 'No fue posible guardar los documentos.')
+      setMessage(safeErrorMessage(error, 'No fue posible guardar los documentos.'))
     } finally {
       setSaving(false)
     }
@@ -495,10 +587,10 @@ function DocumentacionGraficaStep({ onContinue, onBack }) {
 
   useEffect(() => {
     const controller = new AbortController()
-    fetch('/api/form/datos-graficos', { signal: controller.signal })
-      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.message); return result })
+    apiFetch('/api/form/datos-graficos', { signal: controller.signal })
+      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(); return result })
       .then((result) => { setMetadata(result.data); setAccepted(Boolean(Number(result.data.promocion_gtomx))) })
-      .catch((error) => { if (error.name !== 'AbortError') setMessage(error.message || 'No fue posible cargar la documentación gráfica.') })
+      .catch((error) => { if (error.name !== 'AbortError') setMessage(safeErrorMessage(error, 'No fue posible cargar la documentación gráfica.')) })
     return () => controller.abort()
   }, [])
   useEffect(() => () => Object.values(selectedImages).forEach((image) => URL.revokeObjectURL(image.preview)), [selectedImages])
@@ -530,13 +622,13 @@ function DocumentacionGraficaStep({ onContinue, onBack }) {
     formData.append('promocion_gtomx', '1')
     for (const [name, image] of Object.entries(selectedImages)) formData.append(name, image.file)
     try {
-      const response = await fetch('/api/form/datos-graficos', { method: 'POST', body: formData })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.message)
-      setMessage(result.message)
+      const response = await apiFetch('/api/form/datos-graficos', { method: 'POST', headers: { 'X-CSRF-Token': readCsrfToken() }, body: formData })
+      await response.json()
+      if (!response.ok) throw new Error()
+      setMessage('Imágenes guardadas correctamente.')
       onContinue()
     } catch (error) {
-      setMessage(error.message || 'No fue posible guardar las imágenes.')
+      setMessage(safeErrorMessage(error, 'No fue posible guardar las imágenes.'))
     } finally {
       setSaving(false)
     }
@@ -586,10 +678,10 @@ function HospedajeStep({ onContinue, onBack }) {
   const [saving, setSaving] = useState(false)
   useEffect(() => {
     const controller = new AbortController()
-    fetch('/api/form/hospedaje', { signal: controller.signal })
-      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.message); return result })
+    apiFetch('/api/form/hospedaje', { signal: controller.signal })
+      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(); return result })
       .then((result) => setData(result.data))
-      .catch((error) => { if (error.name !== 'AbortError') setMessage(error.message || 'No fue posible cargar el formulario de hospedaje.') })
+      .catch((error) => { if (error.name !== 'AbortError') setMessage(safeErrorMessage(error, 'No fue posible cargar el formulario de hospedaje.')) })
     return () => controller.abort()
   }, [])
   const update = (name, value) => setData((current) => ({ ...current, [name]: value }))
@@ -599,12 +691,12 @@ function HospedajeStep({ onContinue, onBack }) {
     if (form && !form.reportValidity()) return
     setSaving(true); setMessage('')
     try {
-      const response = await fetch('/api/form/hospedaje', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.message)
-      setMessage(result.message); onContinue()
+      const response = await apiFetch('/api/form/hospedaje', { method: 'PUT', headers: { 'content-type': 'application/json', 'X-CSRF-Token': readCsrfToken() }, body: JSON.stringify(data) })
+      await response.json()
+      if (!response.ok) throw new Error()
+      setMessage('Formulario de hospedaje guardado correctamente.'); onContinue()
     } catch (error) {
-      setMessage(error.message || 'No fue posible guardar el formulario de hospedaje.')
+      setMessage(safeErrorMessage(error, 'No fue posible guardar el formulario de hospedaje.'))
     } finally { setSaving(false) }
   }
   if (!data) return <div className="form-loading">{message || 'Cargando formulario de hospedaje…'}</div>
@@ -646,10 +738,10 @@ function AgenciaStep({ onContinue, onBack }) {
   const [saving, setSaving] = useState(false)
   useEffect(() => {
     const controller = new AbortController()
-    fetch('/api/form/agencia', { signal: controller.signal })
-      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.message); return result })
+    apiFetch('/api/form/agencia', { signal: controller.signal })
+      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(); return result })
       .then((result) => setData(result.data))
-      .catch((error) => { if (error.name !== 'AbortError') setMessage(error.message || 'No fue posible cargar el formulario de agencia de viajes.') })
+      .catch((error) => { if (error.name !== 'AbortError') setMessage(safeErrorMessage(error, 'No fue posible cargar el formulario de agencia de viajes.')) })
     return () => controller.abort()
   }, [])
   const update = (name, value) => setData((current) => ({ ...current, [name]: value }))
@@ -658,12 +750,12 @@ function AgenciaStep({ onContinue, onBack }) {
     if (form && !form.reportValidity()) return
     setSaving(true); setMessage('')
     try {
-      const response = await fetch('/api/form/agencia', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.message)
+      const response = await apiFetch('/api/form/agencia', { method: 'PUT', headers: { 'content-type': 'application/json', 'X-CSRF-Token': readCsrfToken() }, body: JSON.stringify(data) })
+      await response.json()
+      if (!response.ok) throw new Error()
       onContinue()
     } catch (error) {
-      setMessage(error.message || 'No fue posible guardar el formulario de agencia de viajes.')
+      setMessage(safeErrorMessage(error, 'No fue posible guardar el formulario de agencia de viajes.'))
     } finally { setSaving(false) }
   }
   if (!data) return <div className="form-loading">{message || 'Cargando formulario de agencia de viajes…'}</div>
@@ -700,10 +792,10 @@ function GuiaStep({ onContinue, onBack }) {
   const [saving, setSaving] = useState(false)
   useEffect(() => {
     const controller = new AbortController()
-    fetch('/api/form/guia', { signal: controller.signal })
-      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.message); return result })
+    apiFetch('/api/form/guia', { signal: controller.signal })
+      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(); return result })
       .then((result) => setData(result.data))
-      .catch((error) => { if (error.name !== 'AbortError') setMessage(error.message || 'No fue posible cargar el formulario de guía de turistas.') })
+      .catch((error) => { if (error.name !== 'AbortError') setMessage(safeErrorMessage(error, 'No fue posible cargar el formulario de guía de turistas.')) })
     return () => controller.abort()
   }, [])
   const update = (name, value) => setData((current) => ({ ...current, [name]: value }))
@@ -715,12 +807,12 @@ function GuiaStep({ onContinue, onBack }) {
     if (!GUIDE_LANGUAGES.some(([name]) => Number(data[name]) === 1) && !String(data.otro_idioma || '').trim()) { setMessage('Selecciona o captura al menos un idioma.'); return }
     setSaving(true); setMessage('')
     try {
-      const response = await fetch('/api/form/guia', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.message)
+      const response = await apiFetch('/api/form/guia', { method: 'PUT', headers: { 'content-type': 'application/json', 'X-CSRF-Token': readCsrfToken() }, body: JSON.stringify(data) })
+      await response.json()
+      if (!response.ok) throw new Error()
       onContinue()
     } catch (error) {
-      setMessage(error.message || 'No fue posible guardar el formulario de guía de turistas.')
+      setMessage(safeErrorMessage(error, 'No fue posible guardar el formulario de guía de turistas.'))
     } finally { setSaving(false) }
   }
   if (!data) return <div className="form-loading">{message || 'Cargando formulario de guía de turistas…'}</div>
@@ -747,10 +839,10 @@ function PromotoresStep({ onContinue, onBack }) {
   const [saving, setSaving] = useState(false)
   useEffect(() => {
     const controller = new AbortController()
-    fetch('/api/form/promotores', { signal: controller.signal })
-      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.message); return result })
+    apiFetch('/api/form/promotores', { signal: controller.signal })
+      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(); return result })
       .then((result) => setData(result.data))
-      .catch((error) => { if (error.name !== 'AbortError') setMessage(error.message || 'No fue posible cargar el formulario de operador de eventos.') })
+      .catch((error) => { if (error.name !== 'AbortError') setMessage(safeErrorMessage(error, 'No fue posible cargar el formulario de operador de eventos.')) })
     return () => controller.abort()
   }, [])
   const update = (name, value) => setData((current) => ({ ...current, [name]: value }))
@@ -759,12 +851,12 @@ function PromotoresStep({ onContinue, onBack }) {
     if (form && !form.reportValidity()) return
     setSaving(true); setMessage('')
     try {
-      const response = await fetch('/api/form/promotores', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.message)
+      const response = await apiFetch('/api/form/promotores', { method: 'PUT', headers: { 'content-type': 'application/json', 'X-CSRF-Token': readCsrfToken() }, body: JSON.stringify(data) })
+      await response.json()
+      if (!response.ok) throw new Error()
       onContinue()
     } catch (error) {
-      setMessage(error.message || 'No fue posible guardar el formulario de operador de eventos.')
+      setMessage(safeErrorMessage(error, 'No fue posible guardar el formulario de operador de eventos.'))
     } finally { setSaving(false) }
   }
   if (!data) return <div className="form-loading">{message || 'Cargando formulario de operador de eventos…'}</div>
@@ -795,10 +887,10 @@ function RestaurantesStep({ onContinue, onBack }) {
   const [saving, setSaving] = useState(false)
   useEffect(() => {
     const controller = new AbortController()
-    fetch('/api/form/restaurantes', { signal: controller.signal })
-      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.message); return result })
+    apiFetch('/api/form/restaurantes', { signal: controller.signal })
+      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(); return result })
       .then((result) => setData(result.data))
-      .catch((error) => { if (error.name !== 'AbortError') setMessage(error.message || 'No fue posible cargar el formulario de alimentos y bebidas.') })
+      .catch((error) => { if (error.name !== 'AbortError') setMessage(safeErrorMessage(error, 'No fue posible cargar el formulario de alimentos y bebidas.')) })
     return () => controller.abort()
   }, [])
   const update = (name, value) => setData((current) => ({ ...current, [name]: value }))
@@ -810,12 +902,12 @@ function RestaurantesStep({ onContinue, onBack }) {
     if (!RESTAURANT_SERVICE_MODES.some(([name]) => Number(data[name]) === 1)) { setMessage('Selecciona al menos una modalidad de servicio.'); return }
     setSaving(true); setMessage('')
     try {
-      const response = await fetch('/api/form/restaurantes', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.message)
+      const response = await apiFetch('/api/form/restaurantes', { method: 'PUT', headers: { 'content-type': 'application/json', 'X-CSRF-Token': readCsrfToken() }, body: JSON.stringify(data) })
+      await response.json()
+      if (!response.ok) throw new Error()
       onContinue()
     } catch (error) {
-      setMessage(error.message || 'No fue posible guardar el formulario de alimentos y bebidas.')
+      setMessage(safeErrorMessage(error, 'No fue posible guardar el formulario de alimentos y bebidas.'))
     } finally { setSaving(false) }
   }
   if (!data) return <div className="form-loading">{message || 'Cargando formulario de alimentos y bebidas…'}</div>
@@ -870,10 +962,10 @@ function GolfStep({ onContinue, onBack }) {
   const [saving, setSaving] = useState(false)
   useEffect(() => {
     const controller = new AbortController()
-    fetch('/api/form/golf', { signal: controller.signal })
-      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.message); return result })
+    apiFetch('/api/form/golf', { signal: controller.signal })
+      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(); return result })
       .then((result) => setData(result.data))
-      .catch((error) => { if (error.name !== 'AbortError') setMessage(error.message || 'No fue posible cargar el formulario de campo de golf.') })
+      .catch((error) => { if (error.name !== 'AbortError') setMessage(safeErrorMessage(error, 'No fue posible cargar el formulario de campo de golf.')) })
     return () => controller.abort()
   }, [])
   const update = (name, value) => setData((current) => ({ ...current, [name]: value }))
@@ -885,12 +977,12 @@ function GolfStep({ onContinue, onBack }) {
     if (!GOLF_TERRAINS.some(([name]) => Number(data[name]) === 1)) { setMessage('Selecciona al menos un tipo de terreno.'); return }
     setSaving(true); setMessage('')
     try {
-      const response = await fetch('/api/form/golf', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.message)
+      const response = await apiFetch('/api/form/golf', { method: 'PUT', headers: { 'content-type': 'application/json', 'X-CSRF-Token': readCsrfToken() }, body: JSON.stringify(data) })
+      await response.json()
+      if (!response.ok) throw new Error()
       onContinue()
     } catch (error) {
-      setMessage(error.message || 'No fue posible guardar el formulario de campo de golf.')
+      setMessage(safeErrorMessage(error, 'No fue posible guardar el formulario de campo de golf.'))
     } finally { setSaving(false) }
   }
   if (!data) return <div className="form-loading">{message || 'Cargando formulario de campo de golf…'}</div>
@@ -929,10 +1021,10 @@ function ArteStep({ onContinue, onBack }) {
   const [saving, setSaving] = useState(false)
   useEffect(() => {
     const controller = new AbortController()
-    fetch('/api/form/arte', { signal: controller.signal })
-      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.message); return result })
+    apiFetch('/api/form/arte', { signal: controller.signal })
+      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(); return result })
       .then((result) => setData(result.data))
-      .catch((error) => { if (error.name !== 'AbortError') setMessage(error.message || 'No fue posible cargar el formulario de arte popular.') })
+      .catch((error) => { if (error.name !== 'AbortError') setMessage(safeErrorMessage(error, 'No fue posible cargar el formulario de arte popular.')) })
     return () => controller.abort()
   }, [])
   const update = (name, value) => setData((current) => ({ ...current, [name]: value }))
@@ -943,12 +1035,12 @@ function ArteStep({ onContinue, onBack }) {
     if (!ART_TYPES.some(([name]) => Number(data[name]) === 1)) { setMessage('Selecciona al menos un tipo de establecimiento.'); return }
     setSaving(true); setMessage('')
     try {
-      const response = await fetch('/api/form/arte', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.message)
+      const response = await apiFetch('/api/form/arte', { method: 'PUT', headers: { 'content-type': 'application/json', 'X-CSRF-Token': readCsrfToken() }, body: JSON.stringify(data) })
+      await response.json()
+      if (!response.ok) throw new Error()
       onContinue()
     } catch (error) {
-      setMessage(error.message || 'No fue posible guardar el formulario de arte popular.')
+      setMessage(safeErrorMessage(error, 'No fue posible guardar el formulario de arte popular.'))
     } finally { setSaving(false) }
   }
   if (!data) return <div className="form-loading">{message || 'Cargando formulario de arte popular…'}</div>
@@ -1019,10 +1111,10 @@ function ArrendadoraStep({ onContinue, onBack }) {
   const [saving, setSaving] = useState(false)
   useEffect(() => {
     const controller = new AbortController()
-    fetch('/api/form/arrendadora', { signal: controller.signal })
-      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.message); return result })
+    apiFetch('/api/form/arrendadora', { signal: controller.signal })
+      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(); return result })
       .then((result) => setData(result.data))
-      .catch((error) => { if (error.name !== 'AbortError') setMessage(error.message || 'No fue posible cargar el formulario de arrendamiento de autos.') })
+      .catch((error) => { if (error.name !== 'AbortError') setMessage(safeErrorMessage(error, 'No fue posible cargar el formulario de arrendamiento de autos.')) })
     return () => controller.abort()
   }, [])
   const update = (name, value) => setData((current) => ({ ...current, [name]: value }))
@@ -1038,12 +1130,12 @@ function ArrendadoraStep({ onContinue, onBack }) {
     if (!hasChecked(RENTAL_PAYMENTS) && !String(data.otra_tc || '').trim()) { setMessage('Selecciona o captura al menos una forma de pago.'); return }
     setSaving(true); setMessage('')
     try {
-      const response = await fetch('/api/form/arrendadora', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.message)
+      const response = await apiFetch('/api/form/arrendadora', { method: 'PUT', headers: { 'content-type': 'application/json', 'X-CSRF-Token': readCsrfToken() }, body: JSON.stringify(data) })
+      await response.json()
+      if (!response.ok) throw new Error()
       onContinue()
     } catch (error) {
-      setMessage(error.message || 'No fue posible guardar el formulario de arrendamiento de autos.')
+      setMessage(safeErrorMessage(error, 'No fue posible guardar el formulario de arrendamiento de autos.'))
     } finally { setSaving(false) }
   }
   if (!data) return <div className="form-loading">{message || 'Cargando formulario de arrendamiento de autos…'}</div>
@@ -1119,10 +1211,10 @@ function ParquesStep({ onContinue, onBack }) {
   const [saving, setSaving] = useState(false)
   useEffect(() => {
     const controller = new AbortController()
-    fetch('/api/form/parques', { signal: controller.signal })
-      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.message); return result })
+    apiFetch('/api/form/parques', { signal: controller.signal })
+      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(); return result })
       .then((result) => setData(result.data))
-      .catch((error) => { if (error.name !== 'AbortError') setMessage(error.message || 'No fue posible cargar el formulario de espacios turísticos.') })
+      .catch((error) => { if (error.name !== 'AbortError') setMessage(safeErrorMessage(error, 'No fue posible cargar el formulario de espacios turísticos.')) })
     return () => controller.abort()
   }, [])
   const update = (name, value) => setData((current) => ({ ...current, [name]: value }))
@@ -1135,12 +1227,12 @@ function ParquesStep({ onContinue, onBack }) {
     if (!hasChecked(PARK_PAYMENTS) && !String(data.otra_tc || '').trim()) { setMessage('Selecciona o captura al menos una forma de pago.'); return }
     setSaving(true); setMessage('')
     try {
-      const response = await fetch('/api/form/parques', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.message)
+      const response = await apiFetch('/api/form/parques', { method: 'PUT', headers: { 'content-type': 'application/json', 'X-CSRF-Token': readCsrfToken() }, body: JSON.stringify(data) })
+      await response.json()
+      if (!response.ok) throw new Error()
       onContinue()
     } catch (error) {
-      setMessage(error.message || 'No fue posible guardar el formulario de espacios turísticos.')
+      setMessage(safeErrorMessage(error, 'No fue posible guardar el formulario de espacios turísticos.'))
     } finally { setSaving(false) }
   }
   if (!data) return <div className="form-loading">{message || 'Cargando formulario de espacios turísticos…'}</div>
@@ -1170,10 +1262,10 @@ function AuxTuristicoStep({ onContinue, onBack }) {
   const [saving, setSaving] = useState(false)
   useEffect(() => {
     const controller = new AbortController()
-    fetch('/api/form/auxturistico', { signal: controller.signal })
-      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.message); return result })
+    apiFetch('/api/form/auxturistico', { signal: controller.signal })
+      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(); return result })
       .then((result) => setData(result.data))
-      .catch((error) => { if (error.name !== 'AbortError') setMessage(error.message || 'No fue posible cargar el formulario de operador turístico.') })
+      .catch((error) => { if (error.name !== 'AbortError') setMessage(safeErrorMessage(error, 'No fue posible cargar el formulario de operador turístico.')) })
     return () => controller.abort()
   }, [])
   const update = (name, value) => setData((current) => ({ ...current, [name]: value }))
@@ -1183,12 +1275,12 @@ function AuxTuristicoStep({ onContinue, onBack }) {
     if (!TOUR_OPERATOR_SHIFTS.some(([name]) => Number(data[name]) === 1)) { setMessage('Selecciona al menos un turno de operación.'); return }
     setSaving(true); setMessage('')
     try {
-      const response = await fetch('/api/form/auxturistico', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.message)
+      const response = await apiFetch('/api/form/auxturistico', { method: 'PUT', headers: { 'content-type': 'application/json', 'X-CSRF-Token': readCsrfToken() }, body: JSON.stringify(data) })
+      await response.json()
+      if (!response.ok) throw new Error()
       onContinue()
     } catch (error) {
-      setMessage(error.message || 'No fue posible guardar el formulario de operador turístico.')
+      setMessage(safeErrorMessage(error, 'No fue posible guardar el formulario de operador turístico.'))
     } finally { setSaving(false) }
   }
   if (!data) return <div className="form-loading">{message || 'Cargando formulario de operador turístico…'}</div>
@@ -1231,10 +1323,10 @@ function BalneariosStep({ onContinue, onBack }) {
   const [saving, setSaving] = useState(false)
   useEffect(() => {
     const controller = new AbortController()
-    fetch('/api/form/balnearios', { signal: controller.signal })
-      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.message); return result })
+    apiFetch('/api/form/balnearios', { signal: controller.signal })
+      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(); return result })
       .then((result) => setData(result.data))
-      .catch((error) => { if (error.name !== 'AbortError') setMessage(error.message || 'No fue posible cargar el formulario de balnearios.') })
+      .catch((error) => { if (error.name !== 'AbortError') setMessage(safeErrorMessage(error, 'No fue posible cargar el formulario de balnearios.')) })
     return () => controller.abort()
   }, [])
   const update = (name, value) => setData((current) => ({ ...current, [name]: value }))
@@ -1248,12 +1340,12 @@ function BalneariosStep({ onContinue, onBack }) {
     if (!hasChecked(WATER_PARK_PAYMENTS) && !String(data.otra_tc || '').trim()) { setMessage('Selecciona o captura al menos una forma de pago.'); return }
     setSaving(true); setMessage('')
     try {
-      const response = await fetch('/api/form/balnearios', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.message)
+      const response = await apiFetch('/api/form/balnearios', { method: 'PUT', headers: { 'content-type': 'application/json', 'X-CSRF-Token': readCsrfToken() }, body: JSON.stringify(data) })
+      await response.json()
+      if (!response.ok) throw new Error()
       onContinue()
     } catch (error) {
-      setMessage(error.message || 'No fue posible guardar el formulario de balnearios.')
+      setMessage(safeErrorMessage(error, 'No fue posible guardar el formulario de balnearios.'))
     } finally { setSaving(false) }
   }
   if (!data) return <div className="form-loading">{message || 'Cargando formulario de balnearios…'}</div>
@@ -1298,10 +1390,10 @@ function CapacitacionStep({ onContinue, onBack }) {
   const [saving, setSaving] = useState(false)
   useEffect(() => {
     const controller = new AbortController()
-    fetch('/api/form/capacitacion', { signal: controller.signal })
-      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.message); return result })
+    apiFetch('/api/form/capacitacion', { signal: controller.signal })
+      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(); return result })
       .then((result) => setData(result.data))
-      .catch((error) => { if (error.name !== 'AbortError') setMessage(error.message || 'No fue posible cargar el formulario de capacitación turística.') })
+      .catch((error) => { if (error.name !== 'AbortError') setMessage(safeErrorMessage(error, 'No fue posible cargar el formulario de capacitación turística.')) })
     return () => controller.abort()
   }, [])
   const update = (name, value) => setData((current) => ({ ...current, [name]: value }))
@@ -1314,12 +1406,12 @@ function CapacitacionStep({ onContinue, onBack }) {
     if (!hasChecked(TRAINING_PAYMENTS) && !String(data.otra_tc || '').trim()) { setMessage('Selecciona o captura al menos una forma de pago.'); return }
     setSaving(true); setMessage('')
     try {
-      const response = await fetch('/api/form/capacitacion', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.message)
+      const response = await apiFetch('/api/form/capacitacion', { method: 'PUT', headers: { 'content-type': 'application/json', 'X-CSRF-Token': readCsrfToken() }, body: JSON.stringify(data) })
+      await response.json()
+      if (!response.ok) throw new Error()
       onContinue()
     } catch (error) {
-      setMessage(error.message || 'No fue posible guardar el formulario de capacitación turística.')
+      setMessage(safeErrorMessage(error, 'No fue posible guardar el formulario de capacitación turística.'))
     } finally { setSaving(false) }
   }
   if (!data) return <div className="form-loading">{message || 'Cargando formulario de capacitación turística…'}</div>
@@ -1372,10 +1464,10 @@ function DeporteStep({ onContinue, onBack }) {
   const [saving, setSaving] = useState(false)
   useEffect(() => {
     const controller = new AbortController()
-    fetch('/api/form/deporte', { signal: controller.signal })
-      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.message); return result })
+    apiFetch('/api/form/deporte', { signal: controller.signal })
+      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(); return result })
       .then((result) => setData(result.data))
-      .catch((error) => { if (error.name !== 'AbortError') setMessage(error.message || 'No fue posible cargar el formulario de deporte y recreación.') })
+      .catch((error) => { if (error.name !== 'AbortError') setMessage(safeErrorMessage(error, 'No fue posible cargar el formulario de deporte y recreación.')) })
     return () => controller.abort()
   }, [])
   const update = (name, value) => setData((current) => ({ ...current, [name]: value }))
@@ -1389,11 +1481,11 @@ function DeporteStep({ onContinue, onBack }) {
     if (!hasChecked(SPORT_PAYMENTS) && !String(data.otra_tc || '').trim()) { setMessage('Selecciona o captura al menos una forma de pago.'); return }
     setSaving(true); setMessage('')
     try {
-      const response = await fetch('/api/form/deporte', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.message)
+      const response = await apiFetch('/api/form/deporte', { method: 'PUT', headers: { 'content-type': 'application/json', 'X-CSRF-Token': readCsrfToken() }, body: JSON.stringify(data) })
+      await response.json()
+      if (!response.ok) throw new Error()
       onContinue()
-    } catch (error) { setMessage(error.message || 'No fue posible guardar el formulario de deporte y recreación.') }
+    } catch (error) { setMessage(safeErrorMessage(error, 'No fue posible guardar el formulario de deporte y recreación.')) }
     finally { setSaving(false) }
   }
   if (!data) return <div className="form-loading">{message || 'Cargando formulario de deporte y recreación…'}</div>
@@ -1424,10 +1516,10 @@ function SpaStep({ onContinue, onBack }) {
   const [saving, setSaving] = useState(false)
   useEffect(() => {
     const controller = new AbortController()
-    fetch('/api/form/spa', { signal: controller.signal })
-      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.message); return result })
+    apiFetch('/api/form/spa', { signal: controller.signal })
+      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(); return result })
       .then((result) => setData(result.data))
-      .catch((error) => { if (error.name !== 'AbortError') setMessage(error.message || 'No fue posible cargar el formulario de SPA.') })
+      .catch((error) => { if (error.name !== 'AbortError') setMessage(safeErrorMessage(error, 'No fue posible cargar el formulario de SPA.')) })
     return () => controller.abort()
   }, [])
   const update = (name, value) => setData((current) => ({ ...current, [name]: value }))
@@ -1440,11 +1532,11 @@ function SpaStep({ onContinue, onBack }) {
     if (!hasChecked(SPA_PAYMENTS) && !String(data.otra_tc || '').trim()) { setMessage('Selecciona o captura al menos una forma de pago.'); return }
     setSaving(true); setMessage('')
     try {
-      const response = await fetch('/api/form/spa', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.message)
+      const response = await apiFetch('/api/form/spa', { method: 'PUT', headers: { 'content-type': 'application/json', 'X-CSRF-Token': readCsrfToken() }, body: JSON.stringify(data) })
+      await response.json()
+      if (!response.ok) throw new Error()
       onContinue()
-    } catch (error) { setMessage(error.message || 'No fue posible guardar el formulario de SPA.') }
+    } catch (error) { setMessage(safeErrorMessage(error, 'No fue posible guardar el formulario de SPA.')) }
     finally { setSaving(false) }
   }
   if (!data) return <div className="form-loading">{message || 'Cargando formulario de SPA…'}</div>
@@ -1474,10 +1566,10 @@ function RecintoStep({ onContinue, onBack }) {
   const [saving, setSaving] = useState(false)
   useEffect(() => {
     const controller = new AbortController()
-    fetch('/api/form/recinto', { signal: controller.signal })
-      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.message); return result })
+    apiFetch('/api/form/recinto', { signal: controller.signal })
+      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(); return result })
       .then((result) => setData(result.data))
-      .catch((error) => { if (error.name !== 'AbortError') setMessage(error.message || 'No fue posible cargar el formulario de recintos.') })
+      .catch((error) => { if (error.name !== 'AbortError') setMessage(safeErrorMessage(error, 'No fue posible cargar el formulario de recintos.')) })
     return () => controller.abort()
   }, [])
   const update = (name, value) => setData((current) => ({ ...current, [name]: value }))
@@ -1490,11 +1582,11 @@ function RecintoStep({ onContinue, onBack }) {
     if (!hasChecked(VENUE_PAYMENTS) && !String(data.otra_tc || '').trim()) { setMessage('Selecciona o captura al menos una forma de pago.'); return }
     setSaving(true); setMessage('')
     try {
-      const response = await fetch('/api/form/recinto', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.message)
+      const response = await apiFetch('/api/form/recinto', { method: 'PUT', headers: { 'content-type': 'application/json', 'X-CSRF-Token': readCsrfToken() }, body: JSON.stringify(data) })
+      await response.json()
+      if (!response.ok) throw new Error()
       onContinue()
-    } catch (error) { setMessage(error.message || 'No fue posible guardar el formulario de recintos.') }
+    } catch (error) { setMessage(safeErrorMessage(error, 'No fue posible guardar el formulario de recintos.')) }
     finally { setSaving(false) }
   }
   if (!data) return <div className="form-loading">{message || 'Cargando formulario de recintos…'}</div>
@@ -1522,7 +1614,7 @@ function HospedajeDigitalStep({ onContinue, onBack }) {
   const [saving, setSaving] = useState(false)
   useEffect(() => {
     const controller = new AbortController()
-    fetch('/api/form/hospedaje-digital', { signal: controller.signal }).then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.message); return result }).then((result) => setData(result.data)).catch((error) => { if (error.name !== 'AbortError') setMessage(error.message || 'No fue posible cargar el formulario de hospedaje digital.') })
+    apiFetch('/api/form/hospedaje-digital', { signal: controller.signal }).then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(); return result }).then((result) => setData(result.data)).catch((error) => { if (error.name !== 'AbortError') setMessage(safeErrorMessage(error, 'No fue posible cargar el formulario de hospedaje digital.')) })
     return () => controller.abort()
   }, [])
   const update = (name, value) => setData((current) => ({ ...current, [name]: value }))
@@ -1533,9 +1625,9 @@ function HospedajeDigitalStep({ onContinue, onBack }) {
     if (!DIGITAL_PLATFORMS.some(([name]) => Number(data[name]) === 1)) { setMessage('Selecciona al menos una plataforma digital.'); return }
     setSaving(true); setMessage('')
     try {
-      const response = await fetch('/api/form/hospedaje-digital', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) })
-      const result = await response.json(); if (!response.ok) throw new Error(result.message); onContinue()
-    } catch (error) { setMessage(error.message || 'No fue posible guardar el formulario de hospedaje digital.') }
+      const response = await apiFetch('/api/form/hospedaje-digital', { method: 'PUT', headers: { 'content-type': 'application/json', 'X-CSRF-Token': readCsrfToken() }, body: JSON.stringify(data) })
+      await response.json(); if (!response.ok) throw new Error(); onContinue()
+    } catch (error) { setMessage(safeErrorMessage(error, 'No fue posible guardar el formulario de hospedaje digital.')) }
     finally { setSaving(false) }
   }
   if (!data) return <div className="form-loading">{message || 'Cargando formulario de hospedaje digital…'}</div>
@@ -1576,17 +1668,17 @@ function ExperienciaStep({ onBack, onComplete }) {
     if (!utility || !navigation) { setMessage('Selecciona una calificación en las dos preguntas.'); return }
     setSaving(true); setMessage('')
     try {
-      const response = await fetch('/api/form/encuesta', {
+      const response = await apiFetch('/api/form/encuesta', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', 'X-CSRF-Token': readCsrfToken() },
         body: JSON.stringify({ fue_utilidad: utility, facil_navegacion: navigation, gustaria: information }),
       })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.message)
+      await response.json()
+      if (!response.ok) throw new Error()
       setSubmitted(true)
       onComplete()
     } catch (error) {
-      setMessage(error.message || 'No fue posible guardar la encuesta.')
+      setMessage(safeErrorMessage(error, 'No fue posible guardar la encuesta.'))
     } finally { setSaving(false) }
   }
   return <div className="general-form experience-form">
@@ -1606,25 +1698,25 @@ function ExperienciaStep({ onBack, onComplete }) {
 
 const WIZARD_STEPS = ['Datos generales', 'Datos técnicos', 'Datos legales', 'Documentación gráfica', 'Formulario de Hospedaje', 'Experiencia']
 
-function MyRecordsModal({ onClose, onSelect }) {
+function MyRecordsView({ onBack, onSelect }) {
   const [records, setRecords] = useState(null)
   const [message, setMessage] = useState('')
   useEffect(() => {
     const controller = new AbortController()
-    fetch('/api/mis-registros', { signal: controller.signal })
-      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(result.message); return result })
+    apiFetch('/api/mis-registros', { signal: controller.signal })
+      .then(async (response) => { const result = await response.json(); if (!response.ok) throw new Error(); return result })
       .then((result) => setRecords(result.data || []))
-      .catch((error) => { if (error.name !== 'AbortError') setMessage(error.message || 'No fue posible cargar tus registros.') })
+      .catch((error) => { if (error.name !== 'AbortError') setMessage(safeErrorMessage(error, 'No fue posible cargar tus registros.')) })
     return () => controller.abort()
   }, [])
   const selectRecord = async (record) => {
-    if (record.actual) { onClose(); return }
+    if (record.actual) { onBack(); return }
     try {
-      const response = await fetch(`/api/mis-registros/${encodeURIComponent(record.clave)}/seleccionar`, { method: 'POST' })
+      const response = await apiFetch(`/api/mis-registros/${encodeURIComponent(record.clave)}/seleccionar`, { method: 'POST', headers: { 'X-CSRF-Token': readCsrfToken() } })
       const result = await response.json()
-      if (!response.ok) throw new Error(result.message)
+      if (!response.ok) throw new Error()
       onSelect(result.data)
-    } catch (error) { setMessage(error.message || 'No fue posible seleccionar el establecimiento.') }
+    } catch (error) { setMessage(safeErrorMessage(error, 'No fue posible seleccionar el establecimiento.')) }
   }
   const showFormat = (record) => Swal.fire({
     icon: 'info', title: 'Formato del establecimiento',
@@ -1640,19 +1732,18 @@ function MyRecordsModal({ onClose, onSelect }) {
     })
     if (!confirmation.isConfirmed) return
     try {
-      const response = await fetch(`/api/mis-registros/${encodeURIComponent(record.clave)}`, { method: 'DELETE' })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.message)
+      const response = await apiFetch(`/api/mis-registros/${encodeURIComponent(record.clave)}`, { method: 'DELETE', headers: { 'X-CSRF-Token': readCsrfToken() } })
+      await response.json()
+      if (!response.ok) throw new Error()
       setRecords((current) => current.filter((item) => item.clave !== record.clave))
-      await Swal.fire({ icon: 'success', title: 'Registro eliminado', text: result.message, confirmButtonColor: '#0878b9' })
+      await Swal.fire({ icon: 'success', title: 'Registro eliminado', text: 'El registro se desactivó correctamente.', confirmButtonColor: '#0878b9' })
     } catch (error) {
-      await Swal.fire({ icon: 'error', title: 'No fue posible eliminarlo', text: error.message, confirmButtonColor: '#0878b9' })
+      await Swal.fire({ icon: 'error', title: 'No fue posible eliminarlo', text: safeErrorMessage(error, 'No fue posible eliminar el registro.'), confirmButtonColor: '#0878b9' })
     }
   }
-  return createPortal(<div className="records-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
-    <section className="records-modal" role="dialog" aria-modal="true" aria-labelledby="records-title">
-      <button className="modal-close" type="button" onClick={onClose} aria-label="Cerrar">×</button>
-      <header><span className="step-pill">Mi cuenta</span><h2 id="records-title">Mis registros</h2><p>Administra los establecimientos asociados a tu correo.</p></header>
+  return <div className="records-page-shell">
+    <section className="records-page" aria-labelledby="records-title">
+      <header><div><span className="step-pill">Mi cuenta</span><h1 id="records-title">Mis registros</h1><p>Administra los establecimientos asociados a tu correo.</p></div><button className="records-back-button" type="button" onClick={onBack}>← Volver al formulario</button></header>
       {message && <p className="general-message" role="status">{message}</p>}
       {!records ? <div className="form-loading">Cargando establecimientos…</div> : <div className="records-list">{records.map((record) => <article className={record.actual ? 'current' : ''} key={record.clave}>
         <div className="record-main"><span className="record-icon">{GIRO_ICONS[record.id_giro] || '📍'}</span><div><strong>{record.nombre_comercial || 'Establecimiento sin nombre'}</strong><span>{record.clave} · {cleanCatalogText(record.giro) || 'Giro sin especificar'}</span><small>{record.municipio || 'Municipio sin especificar'} · {record.porcentaje_registro || 0}% completado</small></div>{record.actual && <b>Actual</b>}</div>
@@ -1663,7 +1754,7 @@ function MyRecordsModal({ onClose, onSelect }) {
         </div>
       </article>)}</div>}
     </section>
-  </div>, document.body)
+  </div>
 }
 
 function AuthenticatedWizard({ user, onLogout, onUserChange }) {
@@ -1679,10 +1770,12 @@ function AuthenticatedWizard({ user, onLogout, onUserChange }) {
       : WIZARD_STEPS
   const experienceStep = skipsGiroForm ? 4 : 5
   const continueWithNewRegistration = async (registration) => {
-    const response = await fetch(`/api/mis-registros/${encodeURIComponent(registration.clave)}/seleccionar`, { method: 'POST' })
+    const response = await apiFetch(`/api/mis-registros/${encodeURIComponent(registration.clave)}/seleccionar`, { method: 'POST', headers: { 'X-CSRF-Token': readCsrfToken() } })
     const result = await response.json()
-    if (!response.ok) throw new Error(result.message || 'El registro fue creado, pero no fue posible abrir su formulario.')
+    if (!response.ok) throw new Error()
     setShowNewRegistration(false)
+    setShowRecords(false)
+    setStep(0)
     onUserChange(result.data)
   }
 
@@ -1692,7 +1785,7 @@ function AuthenticatedWizard({ user, onLogout, onUserChange }) {
          <img  src={logoRet} alt="RET" width="100" />
       <div className="wizard-header-actions"><div className="records-shortcuts"><button className="new-record-button" type="button" onClick={() => setShowNewRegistration(true)}>＋ Nuevo registro</button><button className="my-records-button" type="button" onClick={() => setShowRecords(true)}>Mis registros</button></div><div className="wizard-user"><div><strong>{user.nombre_comercial || user.clave}</strong><span>{user.clave}</span></div><button type="button" onClick={onLogout}>Cerrar sesión</button></div></div>
     </header>
-    <div className="wizard-layout">
+    {showRecords ? <MyRecordsView onBack={() => setShowRecords(false)} onSelect={(selected) => { setShowRecords(false); setStep(0); onUserChange(selected) }} /> : <div className="wizard-layout">
       <aside className="wizard-sidebar">
         <span className="eyebrow">Registro del establecimiento</span>
         <h1>Completa tu información</h1>
@@ -1726,8 +1819,7 @@ function AuthenticatedWizard({ user, onLogout, onUserChange }) {
           {step === experienceStep && <ExperienciaStep onBack={() => setStep(skipsGiroForm ? 3 : 4)} onComplete={() => setShowRecords(true)} />}
         </form>
       </section>
-    </div>
-    {showRecords && <MyRecordsModal onClose={() => setShowRecords(false)} onSelect={(selected) => { setShowRecords(false); onUserChange(selected) }} />}
+    </div>}
     {showNewRegistration && <RegistrationModal accountEmail={user.email} onClose={() => setShowNewRegistration(false)} onRegistered={continueWithNewRegistration} />}
   </main>
 }
@@ -1739,7 +1831,7 @@ function MapPanel() {
   const [status, setStatus] = useState('loading')
   useEffect(() => {
     const controller = new AbortController()
-    fetch('/api/giros', { signal: controller.signal })
+    apiFetch('/api/giros', { signal: controller.signal })
       .then((response) => { if (!response.ok) throw new Error(); return response.json() })
       .then(({ data }) => setGiros(Array.isArray(data) ? data : []))
       .catch(() => {})
@@ -1747,9 +1839,8 @@ function MapPanel() {
   }, [])
   useEffect(() => {
     const controller = new AbortController()
-    fetch(`/api/establecimientos?giro=${encodeURIComponent(selectedGiro)}`, {
+    apiFetch(`/api/establecimientos?giro=${encodeURIComponent(selectedGiro)}`, {
       signal: controller.signal,
-      headers: { 'x-establecimiento-token': ESTABLECIMIENTO_TOKEN },
     })
       .then((response) => { if (!response.ok) throw new Error(); return response.json() })
       .then(({ data }) => { setLocations(Array.isArray(data) ? data : []); setStatus('ready') })
@@ -1776,15 +1867,69 @@ function MapPanel() {
   </main>
 }
 
+function AdminDashboard({ admin, onLogout }) {
+  const [dashboard, setDashboard] = useState(null)
+  const [message, setMessage] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  useEffect(() => {
+    const controller = new AbortController()
+    apiFetch('/api/admin/dashboard', { signal: controller.signal })
+      .then((response) => response.json())
+      .then((result) => setDashboard(result.data))
+      .catch((error) => { if (error.name !== 'AbortError') setMessage(safeErrorMessage(error, 'No fue posible cargar el dashboard.')) })
+    return () => controller.abort()
+  }, [])
+  const metrics = dashboard?.metrics || {}
+  const formatNumber = (number) => Number(number || 0).toLocaleString('es-MX')
+  const maxGiro = Math.max(...(dashboard?.byGiro || []).map((item) => Number(item.total)), 1)
+  const maxMunicipio = Math.max(...(dashboard?.byMunicipio || []).map((item) => Number(item.total)), 1)
+  const maxActivity = Math.max(...(dashboard?.activity || []).map((item) => Number(item.total)), 1)
+  const recent = (dashboard?.recent || []).filter((item) => !statusFilter || item.estatus === statusFilter)
+  const metricCards = [
+    ['Registros activos', metrics.activos, '◉', 'active'], ['Registros de hoy', metrics.hoy, '+', 'today'],
+    ['Pendientes', metrics.pendientes, '◷', 'pending'], ['Concluidos', metrics.concluidos, '✓', 'complete'],
+    ['Aprobados', metrics.aprobados, '★', 'approved'], ['Renovaciones', metrics.renovaciones, '↻', 'renewal'],
+    ['Vencidos', metrics.vencidos, '!', 'expired'],
+  ]
+  const quickLinks = [['Pendiente', 'Pendientes', metrics.pendientes], ['Concluido', 'Concluidos', metrics.concluidos], ['Aprobado', 'Aprobados', metrics.aprobados], ['Renovación', 'Renovaciones', metrics.renovaciones]]
+  return <main className="admin-dashboard">
+    <header className="admin-topbar"><div><img src={logoRet} alt="RET" /><span>Administración RET</span></div><div className="admin-user"><span><strong>{admin.name}</strong><small>{admin.email}</small></span><button type="button" onClick={onLogout}>Cerrar sesión</button></div></header>
+    <section className="admin-content">
+      <div className="admin-heading"><div><span className="eyebrow">Administración estatal</span><h1>Panel Ejecutivo RET</h1><p>Indicadores y actividad del Registro Estatal de Turismo.</p></div></div>
+      {message && <p className="general-message" role="status">{message}</p>}
+      {!dashboard ? <div className="form-loading">Cargando indicadores…</div> : <>
+        <div className="admin-metrics">
+          {metricCards.map(([label, total, icon, kind]) => <article className={`admin-metric ${kind}`} key={label}><i aria-hidden="true">{icon}</i><div><span>{label}</span><strong>{formatNumber(total)}</strong></div></article>)}
+        </div>
+        <div className="admin-insights">
+          <RankingCard title="Registros por giro" items={dashboard.byGiro} maximum={maxGiro} />
+          <RankingCard title="Registros por municipio" items={dashboard.byMunicipio} maximum={maxMunicipio} />
+        </div>
+        <section className="admin-panel admin-activity"><header><span className="eyebrow">Tendencia reciente</span><h2>Actividad de los últimos 7 días</h2></header><div className="activity-chart">{(dashboard.activity || []).map((item) => <div className="activity-day" key={item.date}><strong>{formatNumber(item.total)}</strong><div><i style={{ height: `${Math.max((Number(item.total) / maxActivity) * 100, item.total ? 8 : 2)}%` }} /></div><span>{new Date(`${item.date}T12:00:00`).toLocaleDateString('es-MX', { weekday: 'short' }).replace('.', '')}</span></div>)}</div></section>
+        <section className="admin-panel admin-shortcuts"><header><span className="eyebrow">Navegación</span><h2>Accesos rápidos</h2></header><div>{quickLinks.map(([status, label, total]) => <button type="button" className={statusFilter === status ? 'selected' : ''} onClick={() => { setStatusFilter(statusFilter === status ? '' : status); document.getElementById('admin-recent')?.scrollIntoView({ behavior: 'smooth' }) }} key={status}><span>{label}</span><strong>{formatNumber(total)}</strong><b aria-hidden="true">→</b></button>)}</div></section>
+        <section className="admin-recent" id="admin-recent"><header><div><span className="eyebrow">Trámites visibles</span><h2>{statusFilter ? `Últimos registros: ${statusFilter}` : 'Últimos 8 trámites visibles'}</h2></div>{statusFilter && <button className="clear-admin-filter" type="button" onClick={() => setStatusFilter('')}>Ver todos</button>}</header><div className="admin-table-wrap"><table><thead><tr><th>Clave RET</th><th>Nombre comercial</th><th>Giro</th><th>Municipio</th><th>Correo</th><th>Fecha de registro</th><th>Estatus</th></tr></thead><tbody>{recent.map((item) => <tr key={item.clave}><td><strong>{item.clave || '—'}</strong></td><td>{item.nombre_comercial || 'Sin nombre'}</td><td>{cleanCatalogText(item.giro) || 'Sin giro'}</td><td>{item.municipio || 'Sin municipio'}</td><td>{item.correo || '—'}</td><td>{item.fecha_registro ? new Date(item.fecha_registro).toLocaleDateString('es-MX') : '—'}</td><td><span className={`admin-status ${item.estatus?.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')}`}>{item.estatus}</span></td></tr>)}{recent.length === 0 && <tr><td colSpan="7" className="admin-empty">No hay trámites recientes con este estatus.</td></tr>}</tbody></table></div></section>
+      </>}
+    </section>
+  </main>
+}
+
+function RankingCard({ title, items = [], maximum = 1 }) {
+  return <section className="admin-panel admin-ranking"><header><span className="eyebrow">Top 6 visibles</span><h2>{title}</h2></header><div>{items.map((item) => <article key={item.label}><div><span title={cleanCatalogText(item.label)}>{cleanCatalogText(item.label)}</span><strong>{Number(item.total).toLocaleString('es-MX')}</strong></div><i><b style={{ width: `${(Number(item.total) / maximum) * 100}%` }} /></i></article>)}</div></section>
+}
+
 export default function App() {
   const [user, setUser] = useState(null)
+  const [admin, setAdmin] = useState(null)
   const [checkingSession, setCheckingSession] = useState(true)
 
   useEffect(() => {
-    fetch('/api/auth/me')
-      .then((response) => response.ok ? response.json() : null)
-      .then((result) => { if (result?.data) setUser(result.data) })
-      .finally(() => setCheckingSession(false))
+    Promise.all([
+      apiFetch('/api/admin/me').then((response) => response.json()).catch(() => null),
+      apiFetch('/api/auth/me').then((response) => response.json()).catch(() => null),
+    ]).then(([adminResult, userResult]) => {
+      if (adminResult?.data) setAdmin(adminResult.data)
+      else if (userResult?.data) setUser(userResult.data)
+    }).finally(() => setCheckingSession(false))
   }, [])
 
   useEffect(() => {
@@ -1795,7 +1940,7 @@ export default function App() {
     const expireSession = () => {
       if (expired || Date.now() < expiresAt) return
       expired = true
-      fetch('/api/auth/logout', { method: 'POST' }).catch(() => {})
+      apiFetch('/api/auth/logout', { method: 'POST', headers: { 'X-CSRF-Token': readCsrfToken() } }).catch(() => {})
       setUser(null)
     }
     const timer = window.setTimeout(expireSession, Math.max(0, expiresAt - Date.now()))
@@ -1810,11 +1955,17 @@ export default function App() {
   }, [user])
 
   const logout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {})
+    await apiFetch('/api/auth/logout', { method: 'POST', headers: { 'X-CSRF-Token': readCsrfToken() } }).catch(() => {})
     setUser(null)
   }
 
+  const adminLogout = async () => {
+    await apiFetch('/api/admin/logout', { method: 'POST' }).catch(() => {})
+    setAdmin(null)
+  }
+
   if (checkingSession) return <div className="session-loader">Verificando sesión…</div>
+  if (admin) return <AdminDashboard admin={admin} onLogout={adminLogout} />
   if (user) return <AuthenticatedWizard key={user.clave} user={user} onLogout={logout} onUserChange={setUser} />
-  return <div className="app-layout"><LoginPanel onLogin={setUser} /><MapPanel /></div>
+  return <div className="app-layout"><LoginPanel onLogin={setUser} onAdminLogin={setAdmin} /><MapPanel /></div>
 }
