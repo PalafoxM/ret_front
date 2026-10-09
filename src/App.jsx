@@ -24,6 +24,10 @@ import './Admin.css'
 
 const DEFAULT_CENTER = [23.6345, -102.5528]
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
+const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY || '6LcEdectAAAAALktcjOF5fQ43mCN3ejx22DdMz9e'
+const RECAPTCHA_LOGIN_ACTION = 'LOGIN'
+const RECAPTCHA_SESSION_KEY = 'ret_captcha_required_until'
+let recaptchaScriptRequest = null
 const STATUS_MESSAGES = {
   400: 'Revisa la información enviada.',
   401: 'Tu sesión ya no es válida. Inicia sesión nuevamente.',
@@ -33,6 +37,33 @@ const STATUS_MESSAGES = {
   413: 'El archivo es demasiado grande.',
   422: 'Revisa los campos obligatorios.',
   429: 'Demasiadas solicitudes. Intenta más tarde.',
+}
+
+function loadRecaptchaEnterprise() {
+  if (window.grecaptcha?.enterprise) return Promise.resolve(window.grecaptcha.enterprise)
+  if (!recaptchaScriptRequest) {
+    recaptchaScriptRequest = new Promise((resolve, reject) => {
+      const existing = document.querySelector('script[data-ret-recaptcha]')
+      const script = existing || document.createElement('script')
+      const onLoad = () => window.grecaptcha?.enterprise ? resolve(window.grecaptcha.enterprise) : reject(new Error('reCAPTCHA no está disponible'))
+      script.addEventListener('load', onLoad, { once: true })
+      script.addEventListener('error', () => reject(new Error('No fue posible cargar reCAPTCHA')), { once: true })
+      if (!existing) {
+        script.src = `https://www.google.com/recaptcha/enterprise.js?render=${encodeURIComponent(RECAPTCHA_SITE_KEY)}`
+        script.async = true
+        script.defer = true
+        script.dataset.retRecaptcha = 'true'
+        document.head.appendChild(script)
+      }
+    }).catch((error) => { recaptchaScriptRequest = null; throw error })
+  }
+  return recaptchaScriptRequest
+}
+
+async function createLoginRecaptchaToken() {
+  const enterprise = await loadRecaptchaEnterprise()
+  await new Promise((resolve) => enterprise.ready(resolve))
+  return enterprise.execute(RECAPTCHA_SITE_KEY, { action: RECAPTCHA_LOGIN_ACTION })
 }
 
 function readCookie(name) {
@@ -78,6 +109,7 @@ async function apiFetch(input, init = {}) {
     throw Object.assign(new Error(serverMessage || `HTTP ${response.status}`), {
       status: response.status,
       serverMessage,
+      captchaRequired: payload?.captcha_required === true,
     })
   }
   return response
@@ -240,6 +272,7 @@ function RegistrationModal({ onClose, accountEmail = '', onRegistered }) {
 function LoginPanel({ onLogin, onAdminLogin }) {
   const [message, setMessage] = useState('')
   const [showRegistration, setShowRegistration] = useState(false)
+  const [captchaRequired, setCaptchaRequired] = useState(() => Number(sessionStorage.getItem(RECAPTCHA_SESSION_KEY) || 0) > Date.now())
   const closeRegistration = useCallback(() => setShowRegistration(false), [])
   const recoverPassword = async () => {
     const result = await Swal.fire({
@@ -291,18 +324,26 @@ function LoginPanel({ onLogin, onAdminLogin }) {
     setMessage('')
     const formData = new FormData(event.currentTarget)
     try {
+      const recaptchaToken = captchaRequired ? await createLoginRecaptchaToken() : ''
       const response = await apiFetch('/api/auth/login', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'X-CSRF-Token': readCsrfToken() },
         body: JSON.stringify({
           clave: formData.get('clave'),
           password: formData.get('password'),
+          recaptcha_token: recaptchaToken,
         }),
       })
       const result = await response.json()
       if (!response.ok) throw new Error()
+      sessionStorage.removeItem(RECAPTCHA_SESSION_KEY)
+      setCaptchaRequired(false)
       onLogin(result.data)
     } catch (error) {
+      if (error?.captchaRequired) {
+        sessionStorage.setItem(RECAPTCHA_SESSION_KEY, String(Date.now() + (15 * 60 * 1000)))
+        setCaptchaRequired(true)
+      }
       setMessage(safeErrorMessage(error, 'No fue posible iniciar sesión.'))
     }
   }
@@ -356,6 +397,7 @@ function LoginPanel({ onLogin, onAdminLogin }) {
         <div className="password-row"><label htmlFor="password">Contraseña</label><button className="text-button" type="button" onClick={recoverPassword}>Olvidé mi contraseña</button></div>
         <div className="field"><span aria-hidden="true">◇</span><input id="password" name="password" type="password" placeholder="Tu contraseña" autoComplete="current-password" required /></div>
         <button className="primary-button" type="submit">Iniciar sesión <span aria-hidden="true">→</span></button>
+        {captchaRequired && <small className="recaptcha-notice">Este acceso está protegido por reCAPTCHA Enterprise.</small>}
         <button className="secondary-button" type="button" onClick={() => setShowRegistration(true)}>Registrarse <span aria-hidden="true">+</span></button>
         <button className="admin-access-button" type="button" onClick={adminLogin}>Acceso administrativo</button>
         <button className="app-download-button" type="button" onClick={showAppNotice}><span aria-hidden="true">⇩</span><span><strong>Descarga la app</strong><small>Disponible muy pronto</small></span></button>
