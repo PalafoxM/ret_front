@@ -1877,6 +1877,8 @@ function AdminDashboard({ admin, onLogout }) {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [tableLoading, setTableLoading] = useState(true)
+  const [reloadKey, setReloadKey] = useState(0)
+  const [selectedClave, setSelectedClave] = useState('')
   useEffect(() => {
     const controller = new AbortController()
     apiFetch('/api/admin/dashboard', { signal: controller.signal })
@@ -1884,7 +1886,7 @@ function AdminDashboard({ admin, onLogout }) {
       .then((result) => setDashboard(result.data))
       .catch((error) => { if (error.name !== 'AbortError') setMessage(safeErrorMessage(error, 'No fue posible cargar el dashboard.')) })
     return () => controller.abort()
-  }, [])
+  }, [reloadKey])
   useEffect(() => {
     const controller = new AbortController()
     const timer = setTimeout(() => {
@@ -1897,7 +1899,29 @@ function AdminDashboard({ admin, onLogout }) {
         .finally(() => { if (!controller.signal.aborted) setTableLoading(false) })
     }, 250)
     return () => { clearTimeout(timer); controller.abort() }
-  }, [page, pageSize, search, statusFilter])
+  }, [page, pageSize, search, statusFilter, reloadKey])
+  const approveRecord = async (item) => {
+    const confirmation = await Swal.fire({
+      icon: 'question',
+      title: '¿Aprobar registro?',
+      html: `Se generará la <strong>Cédula RET</strong> de <strong>${item.nombre_comercial || item.clave}</strong> y se intentará enviar al correo registrado.`,
+      showCancelButton: true,
+      confirmButtonText: 'Aprobar Registro',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#087eb8',
+    })
+    if (!confirmation.isConfirmed) return
+    Swal.fire({ title: 'Generando Cédula RET…', allowOutsideClick: false, didOpen: () => Swal.showLoading() })
+    try {
+      const response = await apiFetch(`/api/admin/tramites/${encodeURIComponent(item.clave)}/aprobar`, { method: 'POST' })
+      const result = await response.json()
+      await Swal.fire({ icon: result.data?.emailSent ? 'success' : 'warning', title: 'Registro aprobado', text: result.message, confirmButtonText: 'Entendido' })
+      setReloadKey((current) => current + 1)
+      setSelectedClave('')
+    } catch (error) {
+      Swal.fire({ icon: 'error', title: 'No fue posible aprobar', text: safeErrorMessage(error, 'No fue posible completar la aprobación.'), confirmButtonText: 'Entendido' })
+    }
+  }
   const metrics = dashboard?.metrics || {}
   const formatNumber = (number) => Number(number || 0).toLocaleString('es-MX')
   const maxGiro = Math.max(...(dashboard?.byGiro || []).map((item) => Number(item.total)), 1)
@@ -1905,13 +1929,15 @@ function AdminDashboard({ admin, onLogout }) {
   const maxActivity = Math.max(...(dashboard?.activity || []).map((item) => Number(item.total)), 1)
   const metricCards = [
     ['Registros activos', metrics.activos, '◉', 'active'], ['Registros de hoy', metrics.hoy, '+', 'today'],
-    ['Pendientes', metrics.pendientes, '◷', 'pending'], ['Concluidos', metrics.concluidos, '✓', 'complete'],
+    ['Pendientes', metrics.pendientes, '◷', 'pending'], ['Concluidos (Para Validar)', metrics.concluidos, '✓', 'complete'],
     ['Aprobados', metrics.aprobados, '★', 'approved'], ['Renovaciones', metrics.renovaciones, '↻', 'renewal'],
     ['Vencidos', metrics.vencidos, '!', 'expired'],
   ]
-  const quickLinks = [['Pendiente', 'Pendientes', metrics.pendientes], ['Concluido', 'Concluidos', metrics.concluidos], ['Aprobado', 'Aprobados', metrics.aprobados], ['Renovación', 'Renovaciones', metrics.renovaciones]]
+  const quickLinks = [['Pendiente', 'Pendientes', metrics.pendientes], ['Concluido', 'Concluidos (Para Validar)', metrics.concluidos], ['Aprobado', 'Aprobados', metrics.aprobados], ['Renovación', 'Renovaciones', metrics.renovaciones]]
+  const topbar = <header className="admin-topbar"><div><img src={logoRet} alt="RET" /><span>Administración RET</span></div><div className="admin-user"><span><strong>{admin.name}</strong><small>{admin.email}</small></span><button type="button" onClick={onLogout}>Cerrar sesión</button></div></header>
+  if (selectedClave) return <main className="admin-dashboard">{topbar}<AdminExpediente clave={selectedClave} onBack={() => setSelectedClave('')} onApprove={approveRecord} onObserved={() => { setSelectedClave(''); setReloadKey((current) => current + 1) }} /></main>
   return <main className="admin-dashboard">
-    <header className="admin-topbar"><div><img src={logoRet} alt="RET" /><span>Administración RET</span></div><div className="admin-user"><span><strong>{admin.name}</strong><small>{admin.email}</small></span><button type="button" onClick={onLogout}>Cerrar sesión</button></div></header>
+    {topbar}
     <section className="admin-content">
       <div className="admin-heading"><div><span className="eyebrow">Administración estatal</span><h1>Panel Ejecutivo RET</h1><p>Indicadores y actividad del Registro Estatal de Turismo.</p></div></div>
       {message && <p className="general-message" role="status">{message}</p>}
@@ -1927,12 +1953,76 @@ function AdminDashboard({ admin, onLogout }) {
         <section className="admin-panel admin-shortcuts"><header><span className="eyebrow">Navegación</span><h2>Accesos rápidos</h2></header><div>{quickLinks.map(([status, label, total]) => <button type="button" className={statusFilter === status ? 'selected' : ''} onClick={() => { setStatusFilter(statusFilter === status ? '' : status); setPage(1); document.getElementById('admin-records')?.scrollIntoView({ behavior: 'smooth' }) }} key={status}><span>{label}</span><strong>{formatNumber(total)}</strong><b aria-hidden="true">→</b></button>)}</div></section>
         <section className="admin-recent" id="admin-records"><header><div><span className="eyebrow">Trámites visibles</span><h2>{statusFilter ? `Registros: ${statusFilter}` : 'Listado de trámites'}</h2></div>{statusFilter && <button className="clear-admin-filter" type="button" onClick={() => { setStatusFilter(''); setPage(1) }}>Ver todos</button>}</header>
           <div className="admin-table-tools"><label>Mostrar <select className="form-select form-select-sm" value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1) }}><option value="10">10</option><option value="25">25</option><option value="50">50</option></select> registros</label><label className="admin-search">Buscar:<input className="form-control form-control-sm" type="search" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} placeholder="Clave, nombre, correo…" /></label></div>
-          <div className="admin-table-wrap table-responsive"><table className="table table-striped table-hover align-middle mb-0"><thead className="table-light"><tr><th>Clave RET</th><th>Nombre comercial</th><th>Giro</th><th>Municipio</th><th>Correo</th><th>Fecha de registro</th><th>Estatus</th></tr></thead><tbody>{tableLoading ? <tr><td colSpan="7" className="admin-empty">Cargando registros…</td></tr> : records.rows.map((item) => <tr key={item.clave}><td><strong>{item.clave || '—'}</strong></td><td>{item.nombre_comercial || 'Sin nombre'}</td><td>{cleanCatalogText(item.giro) || 'Sin giro'}</td><td>{item.municipio || 'Sin municipio'}</td><td>{item.correo || '—'}</td><td>{item.fecha_registro ? new Date(item.fecha_registro).toLocaleDateString('es-MX') : '—'}</td><td><span className={`admin-status ${item.estatus?.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')}`}>{item.estatus}</span></td></tr>)}{!tableLoading && records.rows.length === 0 && <tr><td colSpan="7" className="admin-empty">No se encontraron trámites.</td></tr>}</tbody></table></div>
+          <div className="admin-table-wrap table-responsive"><table className="table table-striped table-hover align-middle mb-0"><thead className="table-light"><tr><th>Clave RET</th><th>Nombre comercial</th><th>Giro</th><th>Municipio</th><th>Correo</th><th>Fecha de registro</th><th>Estatus</th><th>Acciones</th></tr></thead><tbody>{tableLoading ? <tr><td colSpan="8" className="admin-empty">Cargando registros…</td></tr> : records.rows.map((item) => <tr key={item.clave}><td><button className="admin-key-button" type="button" onClick={() => setSelectedClave(item.clave)}>{item.clave || '—'}</button></td><td>{item.nombre_comercial || 'Sin nombre'}</td><td>{cleanCatalogText(item.giro) || 'Sin giro'}</td><td>{item.municipio || 'Sin municipio'}</td><td>{item.correo || '—'}</td><td>{item.fecha_registro ? new Date(item.fecha_registro).toLocaleDateString('es-MX') : '—'}</td><td><span className={`admin-status ${item.estatus?.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')}`}>{item.estatus}</span></td><td><div className="admin-row-actions"><button className="btn btn-sm btn-outline-primary" type="button" onClick={() => setSelectedClave(item.clave)}>Abrir expediente</button>{item.estatus === 'Aprobado' && <a className="btn btn-sm btn-outline-primary" href={`/api/admin/tramites/${encodeURIComponent(item.clave)}/cedula`} target="_blank" rel="noreferrer">Ver Cédula</a>}</div></td></tr>)}{!tableLoading && records.rows.length === 0 && <tr><td colSpan="8" className="admin-empty">No se encontraron trámites.</td></tr>}</tbody></table></div>
           <footer className="admin-table-footer"><span>Mostrando {records.total ? ((records.page - 1) * records.pageSize) + 1 : 0} a {Math.min(records.page * records.pageSize, records.total)} de {formatNumber(records.total)} registros</span><nav aria-label="Paginación de trámites"><ul className="pagination pagination-sm mb-0"><li className={`page-item ${page <= 1 ? 'disabled' : ''}`}><button className="page-link" type="button" onClick={() => setPage((current) => Math.max(1, current - 1))}>Anterior</button></li>{Array.from({ length: Math.min(5, records.pages) }, (_, index) => { const start = Math.max(1, Math.min(page - 2, records.pages - 4)); const number = start + index; return <li className={`page-item ${number === page ? 'active' : ''}`} key={number}><button className="page-link" type="button" onClick={() => setPage(number)}>{number}</button></li> })}<li className={`page-item ${page >= records.pages ? 'disabled' : ''}`}><button className="page-link" type="button" onClick={() => setPage((current) => Math.min(records.pages, current + 1))}>Siguiente</button></li></ul></nav></footer>
         </section>
       </>}
     </section>
   </main>
+}
+
+const ADMIN_GENERAL_FIELDS = [
+  'clave', 'nombre_comercial', 'giro_nombre', 'municipio_nombre', 'info_rfc', 'tipo_persona', 'razon_social',
+  'representante_moral', 'contacto', 'calle', 'numero', 'interior', 'colonia', 'cp', 'telefono',
+  'telefono_comercial', 'telefono2', 'web', 'correo', 'correo_atncli', 'facebook', 'twitter',
+  'descripcion', 'latitud', 'longitud', 'fecha_inicio_operacion', 'fecha_registro', 'porcentaje_registro', 'observaciones',
+]
+
+function adminFieldLabel(field) {
+  const labels = { giro_nombre: 'Giro', municipio_nombre: 'Municipio', info_rfc: 'RFC', cp: 'Código postal', correo_atncli: 'Correo de atención al cliente', porcentaje_registro: 'Porcentaje de registro' }
+  return labels[field] || field.replace(/_/g, ' ').replace(/\b\w/g, (character) => character.toUpperCase())
+}
+
+function AdminDetailGrid({ data, fields }) {
+  const entries = (fields || Object.keys(data || {}).filter((field) => !['clave', 'porcentaje_registro'].includes(field)))
+    .filter((field) => data?.[field] !== null && data?.[field] !== undefined && data?.[field] !== '')
+  if (!entries.length) return <p className="admin-empty-state">No hay información capturada en esta sección.</p>
+  return <dl className="admin-detail-grid">{entries.map((field) => <div key={field}><dt>{adminFieldLabel(field)}</dt><dd>{data[field] instanceof Date || /fecha/.test(field) ? new Date(data[field]).toLocaleDateString('es-MX') : String(data[field])}</dd></div>)}</dl>
+}
+
+function AdminExpediente({ clave, onBack, onApprove, onObserved }) {
+  const [expediente, setExpediente] = useState(null)
+  const [message, setMessage] = useState('')
+  useEffect(() => {
+    const controller = new AbortController()
+    apiFetch(`/api/admin/tramites/${encodeURIComponent(clave)}/expediente`, { signal: controller.signal })
+      .then((response) => response.json())
+      .then((result) => setExpediente(result.data))
+      .catch((error) => { if (error.name !== 'AbortError') setMessage(safeErrorMessage(error, 'No fue posible abrir el expediente.')) })
+    return () => controller.abort()
+  }, [clave])
+  const sendObservations = async () => {
+    const result = await Swal.fire({
+      icon: 'warning', title: 'Enviar observaciones',
+      input: 'textarea', inputLabel: 'Indica con claridad qué información o documentos debe corregir el usuario.',
+      inputPlaceholder: 'Describe las correcciones necesarias…', inputAttributes: { maxlength: '2000' },
+      showCancelButton: true, confirmButtonText: 'Enviar y regresar a Pendientes', cancelButtonText: 'Cancelar', confirmButtonColor: '#c75548',
+      inputValidator: (value) => String(value || '').trim().length < 10 ? 'Escribe al menos 10 caracteres' : undefined,
+    })
+    if (!result.isConfirmed) return
+    try {
+      const response = await apiFetch(`/api/admin/tramites/${encodeURIComponent(clave)}/observaciones`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ observaciones: result.value }) })
+      const payload = await response.json()
+      await Swal.fire({ icon: payload.data?.emailSent ? 'success' : 'warning', title: 'Observaciones registradas', text: payload.message, confirmButtonText: 'Entendido' })
+      onObserved()
+    } catch (error) {
+      Swal.fire({ icon: 'error', title: 'No fue posible enviar', text: safeErrorMessage(error, 'No fue posible registrar las observaciones.'), confirmButtonText: 'Entendido' })
+    }
+  }
+  if (!expediente) return <section className="admin-content"><button className="admin-back" type="button" onClick={onBack}>← Volver al panel</button>{message ? <p className="general-message">{message}</p> : <div className="form-loading">Cargando expediente…</div>}</section>
+  const general = expediente.general || {}
+  const canReview = Number(general.concluido) === 1 && Number(general.aprobado) !== 1
+  return <section className="admin-content admin-file-view">
+    <button className="admin-back" type="button" onClick={onBack}>← Volver a Concluidos (Para Validar)</button>
+    <div className="admin-file-heading"><div><span className="eyebrow">Expediente administrativo</span><h1>{general.nombre_comercial || clave}</h1><p><strong>{clave}</strong> · {cleanCatalogText(general.giro_nombre)} · {general.municipio_nombre}</p></div><span className={`admin-status ${Number(general.aprobado) === 1 ? 'aprobado' : Number(general.concluido) === 1 ? 'concluido' : 'pendiente'}`}>{Number(general.aprobado) === 1 ? 'Aprobado' : Number(general.concluido) === 1 ? 'Concluido (Para Validar)' : 'Pendiente'}</span></div>
+    {message && <p className="general-message">{message}</p>}
+    <section className="admin-panel admin-file-section"><header><div><span className="eyebrow">Información principal</span><h2>Datos generales</h2></div></header><AdminDetailGrid data={general} fields={ADMIN_GENERAL_FIELDS} /></section>
+    <section className="admin-panel admin-file-section"><header><div><span className="eyebrow">Operación</span><h2>Datos técnicos</h2></div></header><AdminDetailGrid data={expediente.technical} /></section>
+    <section className="admin-panel admin-file-section"><header><div><span className="eyebrow">Formulario especializado</span><h2>Datos del giro</h2></div></header><AdminDetailGrid data={expediente.giro} /></section>
+    <section className="admin-panel admin-file-section"><header><div><span className="eyebrow">Revisión documental</span><h2>Documentos adjuntos</h2></div></header><div className="admin-documents">{expediente.documents.map((document) => <article className={document.available ? '' : 'missing'} key={document.field}><div><strong>{document.label}</strong><span>{document.available ? 'Archivo asignado' : 'Sin archivo asignado'}</span></div>{document.available && <a className="btn btn-sm btn-outline-primary" href={`/api/admin/tramites/${encodeURIComponent(clave)}/documentos/${document.field}`} target="_blank" rel="noreferrer">Descargar archivo asignado</a>}</article>)}</div></section>
+    <div className="admin-review-actions">{canReview && <><button className="btn admin-observe-button" type="button" onClick={sendObservations}>Enviar observaciones</button><button className="btn btn-primary" type="button" onClick={() => onApprove({ clave, nombre_comercial: general.nombre_comercial })}>Aprobar Registro</button></>}{Number(general.aprobado) === 1 && <a className="btn btn-primary" href={`/api/admin/tramites/${encodeURIComponent(clave)}/cedula`} target="_blank" rel="noreferrer">Ver Cédula RET</a>}</div>
+    <p className="admin-review-note">Abrir o descargar los documentos no aprueba el registro. La aprobación ocurre solamente al pulsar <strong>Aprobar Registro</strong>.</p>
+  </section>
 }
 
 function RankingCard({ title, items = [], maximum = 1 }) {
