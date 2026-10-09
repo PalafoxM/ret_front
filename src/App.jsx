@@ -333,6 +333,14 @@ function LoginPanel({ onLogin, onAdminLogin }) {
     if (result.isConfirmed && result.value) onAdminLogin(result.value)
   }
 
+  const showAppNotice = () => Swal.fire({
+    icon: 'info',
+    title: 'En desarrollo',
+    text: 'En desarrollo, ya estará disponible muy pronto.',
+    confirmButtonText: 'Entendido',
+    confirmButtonColor: '#0878b9',
+  })
+
   return <aside className="login-panel">
     <div className="brand">
       <img className="brand-logo brand-logo-ret" src={logoRet} alt="RET" />
@@ -350,6 +358,7 @@ function LoginPanel({ onLogin, onAdminLogin }) {
         <button className="primary-button" type="submit">Iniciar sesión <span aria-hidden="true">→</span></button>
         <button className="secondary-button" type="button" onClick={() => setShowRegistration(true)}>Registrarse <span aria-hidden="true">+</span></button>
         <button className="admin-access-button" type="button" onClick={adminLogin}>Acceso administrativo</button>
+        <button className="app-download-button" type="button" onClick={showAppNotice}><span aria-hidden="true">⇩</span><span><strong>Descarga la app</strong><small>Disponible muy pronto</small></span></button>
         {message && <p className="form-message" role="status">{message}</p>}
       </form>
     </div>
@@ -1783,7 +1792,7 @@ function AuthenticatedWizard({ user, onLogout, onUserChange }) {
   return <main className="wizard-page">
     <header className="wizard-topbar">
     
-         <img  src={logoRet} alt="RET" width="100" />
+      <div className="wizard-brand"><img src={logoRet} alt="RET" /><img src={logogto} alt="Gobierno de Guanajuato" /></div>
       <div className="wizard-header-actions"><div className="records-shortcuts"><button className="new-record-button" type="button" onClick={() => setShowNewRegistration(true)}>＋ Nuevo registro</button><button className="my-records-button" type="button" onClick={() => setShowRecords(true)}>Mis registros</button></div><div className="wizard-user"><div><strong>{user.nombre_comercial || user.clave}</strong><span>{user.clave}</span></div><button type="button" onClick={onLogout}>Cerrar sesión</button></div></div>
     </header>
     {showRecords ? <MyRecordsView onBack={() => setShowRecords(false)} onSelect={(selected) => { setShowRecords(false); setStep(0); onUserChange(selected) }} /> : <div className="wizard-layout">
@@ -1879,6 +1888,8 @@ function AdminDashboard({ admin, onLogout }) {
   const [tableLoading, setTableLoading] = useState(true)
   const [reloadKey, setReloadKey] = useState(0)
   const [selectedClave, setSelectedClave] = useState('')
+  const [showUsers, setShowUsers] = useState(false)
+  const [showReports, setShowReports] = useState(false)
   useEffect(() => {
     const controller = new AbortController()
     apiFetch('/api/admin/dashboard', { signal: controller.signal })
@@ -1934,7 +1945,9 @@ function AdminDashboard({ admin, onLogout }) {
     ['Vencidos', metrics.vencidos, '!', 'expired'],
   ]
   const quickLinks = [['Pendiente', 'Pendientes', metrics.pendientes], ['Concluido', 'Concluidos (Para Validar)', metrics.concluidos], ['Aprobado', 'Aprobados', metrics.aprobados], ['Renovación', 'Renovaciones', metrics.renovaciones]]
-  const topbar = <header className="admin-topbar"><div><img src={logoRet} alt="RET" /><span>Administración RET</span></div><div className="admin-user"><span><strong>{admin.name}</strong><small>{admin.email}</small></span><button type="button" onClick={onLogout}>Cerrar sesión</button></div></header>
+  const topbar = <header className="admin-topbar"><div><span className="admin-brand-logos"><img src={logoRet} alt="RET" /><img src={logogto} alt="Gobierno de Guanajuato" /></span><span className="admin-brand-title">Administración RET</span></div><div className="admin-user"><button type="button" onClick={() => { setShowUsers(false); setShowReports(false); setSelectedClave('') }}>Panel ejecutivo</button><button type="button" onClick={() => { setShowUsers(true); setShowReports(false); setSelectedClave('') }}>Usuarios</button><button type="button" onClick={() => { setShowReports(true); setShowUsers(false); setSelectedClave('') }}>Reportes Excel</button><span><strong>{admin.name}</strong><small>{admin.email}</small></span><button type="button" onClick={onLogout}>Cerrar sesión</button></div></header>
+  if (showReports) return <main className="admin-dashboard">{topbar}<AdminReports /></main>
+  if (showUsers) return <main className="admin-dashboard">{topbar}<AdminUsers /></main>
   if (selectedClave) return <main className="admin-dashboard">{topbar}<AdminExpediente clave={selectedClave} onBack={() => setSelectedClave('')} onApprove={approveRecord} onObserved={() => { setSelectedClave(''); setReloadKey((current) => current + 1) }} /></main>
   return <main className="admin-dashboard">
     {topbar}
@@ -1959,6 +1972,104 @@ function AdminDashboard({ admin, onLogout }) {
       </>}
     </section>
   </main>
+}
+
+function AdminReportGroup({ eyebrow, title, items }) {
+  return <section className="admin-panel admin-report-group"><header><div><span className="eyebrow">{eyebrow}</span><h2>{title}</h2></div></header><div className="admin-report-grid">{items.map((report) => <article key={report.id}><span className="admin-excel-icon" aria-hidden="true">XLSX</span><div><strong>{report.title}</strong><small>Archivo Excel con los registros correspondientes.</small></div><a className="btn btn-sm btn-outline-primary" href={`/api/admin/reportes/${encodeURIComponent(report.id)}.xlsx`} download>Descargar</a></article>)}</div></section>
+}
+
+function AdminReports() {
+  const [reports, setReports] = useState(null)
+  const [message, setMessage] = useState('')
+  useEffect(() => {
+    const controller = new AbortController()
+    apiFetch('/api/admin/reportes', { signal: controller.signal })
+      .then((response) => response.json())
+      .then((result) => setReports(result.data || []))
+      .catch((error) => { if (error.name !== 'AbortError') setMessage(safeErrorMessage(error, 'No fue posible cargar los reportes.')) })
+    return () => controller.abort()
+  }, [])
+  const stateReports = (reports || []).filter((report) => report.category === 'Estado del trámite')
+  const appReports = (reports || []).filter((report) => report.category === 'Aplicación móvil')
+  return <section className="admin-content admin-reports-view">
+    <div className="admin-heading"><span className="eyebrow">Exportación de información</span><h1>Reportes Excel</h1><p>Nueve reportes actualizados directamente desde la base de datos.</p></div>
+    {message && <p className="general-message" role="status">{message}</p>}
+    {!reports ? <div className="form-loading">Cargando reportes…</div> : <><AdminReportGroup eyebrow="Seis reportes" title="Por estado del trámite" items={stateReports} /><AdminReportGroup eyebrow="Tres reportes" title="Información para la app" items={appReports} /></>}
+  </section>
+}
+
+function AdminUsers() {
+  const [records, setRecords] = useState({ rows: [], total: 0, page: 1, pages: 1, pageSize: 10 })
+  const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [loading, setLoading] = useState(true)
+  const [message, setMessage] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
+  useEffect(() => {
+    const controller = new AbortController()
+    const timer = setTimeout(() => {
+      setLoading(true)
+      const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize), search })
+      apiFetch(`/api/admin/usuarios?${query}`, { signal: controller.signal })
+        .then((response) => response.json())
+        .then((result) => setRecords(result.data))
+        .catch((error) => { if (error.name !== 'AbortError') setMessage(safeErrorMessage(error, 'No fue posible cargar los usuarios.')) })
+        .finally(() => { if (!controller.signal.aborted) setLoading(false) })
+    }, 250)
+    return () => { clearTimeout(timer); controller.abort() }
+  }, [page, pageSize, search, reloadKey])
+  const generatePassword = () => {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@$%*-_'
+    const values = new Uint32Array(12)
+    window.crypto.getRandomValues(values)
+    return `R3t!${Array.from(values, (value) => alphabet[value % alphabet.length]).join('')}`
+  }
+  const changePassword = async (user) => {
+    const result = await Swal.fire({
+      icon: 'info', title: 'Cambiar contraseña',
+      html: '<p id="password-user" class="swal-user-reference"></p><input id="new-user-password" class="swal2-input" type="password" autocomplete="new-password" placeholder="Nueva contraseña"><input id="confirm-user-password" class="swal2-input" type="password" autocomplete="new-password" placeholder="Confirmar contraseña"><button id="generate-user-password" type="button" class="swal-password-generator">Generar contraseña segura</button>',
+      showCancelButton: true, confirmButtonText: 'Actualizar contraseña', cancelButtonText: 'Cancelar', confirmButtonColor: '#087eb8',
+      didOpen: () => {
+        const popup = Swal.getPopup()
+        popup.querySelector('#password-user').textContent = `${user.clave || 'Sin clave'} · ${user.email || 'Sin correo'}`
+        popup.querySelector('#generate-user-password').addEventListener('click', () => {
+          const password = generatePassword()
+          popup.querySelector('#new-user-password').value = password
+          popup.querySelector('#confirm-user-password').value = password
+          popup.querySelector('#new-user-password').type = 'text'
+          popup.querySelector('#confirm-user-password').type = 'text'
+        })
+      },
+      preConfirm: () => {
+        const popup = Swal.getPopup()
+        const password = popup.querySelector('#new-user-password').value
+        const confirmation = popup.querySelector('#confirm-user-password').value
+        if (password !== confirmation) { Swal.showValidationMessage('Las contraseñas no coinciden'); return false }
+        if (password.length < 12 || !/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/\d/.test(password) || !/[^A-Za-z0-9]/.test(password)) { Swal.showValidationMessage('Usa al menos 12 caracteres, mayúscula, minúscula, número y símbolo'); return false }
+        return password
+      },
+    })
+    if (!result.isConfirmed) return
+    try {
+      const response = await apiFetch(`/api/admin/usuarios/${user.id_usr}/password`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: result.value }) })
+      const payload = await response.json()
+      await Swal.fire({ icon: 'success', title: 'Contraseña actualizada', text: payload.message, confirmButtonText: 'Entendido' })
+      setReloadKey((current) => current + 1)
+    } catch (error) {
+      Swal.fire({ icon: 'error', title: 'No fue posible actualizar', text: safeErrorMessage(error, 'No fue posible cambiar la contraseña.'), confirmButtonText: 'Entendido' })
+    }
+  }
+  const formatNumber = (number) => Number(number || 0).toLocaleString('es-MX')
+  return <section className="admin-content admin-users-view">
+    <div className="admin-heading"><span className="eyebrow">Administración de acceso</span><h1>Usuarios RET</h1><p>Consulta las cuentas registradas y asigna una nueva contraseña cuando sea necesario.</p></div>
+    {message && <p className="general-message" role="status">{message}</p>}
+    <section className="admin-recent admin-users-table"><header><div><span className="eyebrow">Tabla ret_usr</span><h2>Cuentas de acceso</h2></div><span className="admin-total-pill">{formatNumber(records.total)} usuarios</span></header>
+      <div className="admin-table-tools"><label>Mostrar <select className="form-select form-select-sm" value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1) }}><option value="10">10</option><option value="25">25</option><option value="50">50</option></select> usuarios</label><label className="admin-search">Buscar:<input className="form-control form-control-sm" type="search" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} placeholder="Clave, correo o establecimiento…" /></label></div>
+      <div className="admin-table-wrap table-responsive"><table className="table table-striped table-hover align-middle mb-0"><thead className="table-light"><tr><th>ID</th><th>Clave RET</th><th>Establecimiento</th><th>Correo</th><th>Perfil</th><th>Avance</th><th>Registro</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>{loading ? <tr><td colSpan="9" className="admin-empty">Cargando usuarios…</td></tr> : records.rows.map((user) => <tr key={user.id_usr}><td>{user.id_usr}</td><td><strong>{user.clave || '—'}</strong></td><td>{user.nombre_comercial || 'Sin nombre'}</td><td>{user.email || '—'}</td><td>{user.id_perfil}</td><td>{Number(user.porcentaje_registro || 0)}%</td><td>{user.fecha_registro || '—'}</td><td><span className={`admin-status ${Number(user.activo) === 1 ? 'aprobado' : 'vencido'}`}>{Number(user.activo) === 1 ? 'Activo' : 'Inactivo'}</span></td><td><button className="btn btn-sm btn-outline-primary" type="button" onClick={() => changePassword(user)}>Cambiar contraseña</button></td></tr>)}{!loading && records.rows.length === 0 && <tr><td colSpan="9" className="admin-empty">No se encontraron usuarios.</td></tr>}</tbody></table></div>
+      <footer className="admin-table-footer"><span>Mostrando {records.total ? ((records.page - 1) * records.pageSize) + 1 : 0} a {Math.min(records.page * records.pageSize, records.total)} de {formatNumber(records.total)} usuarios</span><nav aria-label="Paginación de usuarios"><ul className="pagination pagination-sm mb-0"><li className={`page-item ${page <= 1 ? 'disabled' : ''}`}><button className="page-link" type="button" onClick={() => setPage((current) => Math.max(1, current - 1))}>Anterior</button></li>{Array.from({ length: Math.min(5, records.pages) }, (_, index) => { const start = Math.max(1, Math.min(page - 2, records.pages - 4)); const number = start + index; return <li className={`page-item ${number === page ? 'active' : ''}`} key={number}><button className="page-link" type="button" onClick={() => setPage(number)}>{number}</button></li> })}<li className={`page-item ${page >= records.pages ? 'disabled' : ''}`}><button className="page-link" type="button" onClick={() => setPage((current) => Math.min(records.pages, current + 1))}>Siguiente</button></li></ul></nav></footer>
+    </section>
+  </section>
 }
 
 const ADMIN_GENERAL_FIELDS = [
