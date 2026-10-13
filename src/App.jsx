@@ -1986,7 +1986,7 @@ function AdminDashboard({ admin, onLogout }) {
     ['Aprobados', metrics.aprobados, '★', 'approved'], ['Renovaciones', metrics.renovaciones, '↻', 'renewal'],
     ['Vencidos', metrics.vencidos, '!', 'expired'],
   ]
-  const quickLinks = [['Pendiente', 'Pendientes', metrics.pendientes], ['Concluido', 'Concluidos (Para Validar)', metrics.concluidos], ['Aprobado', 'Aprobados', metrics.aprobados], ['Renovación', 'Renovaciones', metrics.renovaciones]]
+  const quickLinks = [['Pendiente', 'Pendientes', metrics.pendientes], ['Concluido', 'Concluidos (Para Validar)', metrics.concluidos], ['Aprobado', 'Aprobados', metrics.aprobados], ['Renovación', 'Renovaciones', metrics.renovaciones], ['Vencido', 'Vencidos', metrics.vencidos]]
   const topbar = <header className="admin-topbar"><div><span className="admin-brand-logos"><img src={logoRet} alt="RET" /><img src={logogto} alt="Gobierno de Guanajuato" /></span><span className="admin-brand-title">Administración RET</span></div><div className="admin-user"><button type="button" onClick={() => { setShowUsers(false); setShowReports(false); setSelectedClave('') }}>Panel ejecutivo</button><button type="button" onClick={() => { setShowUsers(true); setShowReports(false); setSelectedClave('') }}>Usuarios</button><button type="button" onClick={() => { setShowReports(true); setShowUsers(false); setSelectedClave('') }}>Reportes Excel</button><span><strong>{admin.name}</strong><small>{admin.email}</small></span><button type="button" onClick={onLogout}>Cerrar sesión</button></div></header>
   if (showReports) return <main className="admin-dashboard">{topbar}<AdminReports /></main>
   if (showUsers) return <main className="admin-dashboard">{topbar}<AdminUsers /></main>
@@ -2162,18 +2162,37 @@ function AdminExpediente({ clave, onBack, onApprove, onObserved }) {
       Swal.fire({ icon: 'error', title: 'No fue posible enviar', text: safeErrorMessage(error, 'No fue posible registrar las observaciones.'), confirmButtonText: 'Entendido' })
     }
   }
+  const sendToExpired = async () => {
+    const result = await Swal.fire({
+      icon: 'warning', title: '¿Enviar a Vencidos?',
+      text: 'El registro dejará de ser visible y sus estados concluido y aprobado cambiarán a cero.',
+      showCancelButton: true, confirmButtonText: 'Enviar a Vencidos', cancelButtonText: 'Cancelar', confirmButtonColor: '#b64136',
+    })
+    if (!result.isConfirmed) return
+    try {
+      const response = await apiFetch(`/api/admin/tramites/${encodeURIComponent(clave)}/vencido`, { method: 'POST' })
+      const payload = await response.json()
+      await Swal.fire({ icon: 'success', title: 'Trámite actualizado', text: payload.message, confirmButtonText: 'Entendido' })
+      onObserved()
+    } catch (error) {
+      Swal.fire({ icon: 'error', title: 'No fue posible actualizar', text: safeErrorMessage(error, 'No fue posible enviar el trámite a Vencidos.'), confirmButtonText: 'Entendido' })
+    }
+  }
   if (!expediente) return <section className="admin-content"><button className="admin-back" type="button" onClick={onBack}>← Volver al panel</button>{message ? <p className="general-message">{message}</p> : <div className="form-loading">Cargando expediente…</div>}</section>
   const general = expediente.general || {}
-  const canReview = Number(general.concluido) === 1 && Number(general.aprobado) !== 1
+  const isExpired = general.estatus === 'Vencido'
+  const canReview = Number(general.concluido) === 1 && Number(general.aprobado) !== 1 && !isExpired
+  const canObserve = canReview || isExpired
+  const statusClass = String(general.estatus || 'Pendiente').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   return <section className="admin-content admin-file-view">
     <button className="admin-back" type="button" onClick={onBack}>← Volver a Concluidos (Para Validar)</button>
-    <div className="admin-file-heading"><div><span className="eyebrow">Expediente administrativo</span><h1>{general.nombre_comercial || clave}</h1><p><strong>{clave}</strong> · {cleanCatalogText(general.giro_nombre)} · {general.municipio_nombre}</p></div><span className={`admin-status ${Number(general.aprobado) === 1 ? 'aprobado' : Number(general.concluido) === 1 ? 'concluido' : 'pendiente'}`}>{Number(general.aprobado) === 1 ? 'Aprobado' : Number(general.concluido) === 1 ? 'Concluido (Para Validar)' : 'Pendiente'}</span></div>
+    <div className="admin-file-heading"><div><span className="eyebrow">Expediente administrativo</span><h1>{general.nombre_comercial || clave}</h1><p><strong>{clave}</strong> · {cleanCatalogText(general.giro_nombre)} · {general.municipio_nombre}</p></div><span className={`admin-status ${statusClass}`}>{general.estatus === 'Concluido' ? 'Concluido (Para Validar)' : general.estatus}</span></div>
     {message && <p className="general-message">{message}</p>}
     <section className="admin-panel admin-file-section"><header><div><span className="eyebrow">Información principal</span><h2>Datos generales</h2></div></header><AdminDetailGrid data={general} fields={ADMIN_GENERAL_FIELDS} /></section>
     <section className="admin-panel admin-file-section"><header><div><span className="eyebrow">Operación</span><h2>Datos técnicos</h2></div></header><AdminDetailGrid data={expediente.technical} /></section>
     <section className="admin-panel admin-file-section"><header><div><span className="eyebrow">Formulario especializado</span><h2>Datos del giro</h2></div></header><AdminDetailGrid data={expediente.giro} /></section>
     <section className="admin-panel admin-file-section"><header><div><span className="eyebrow">Revisión documental</span><h2>Documentos adjuntos</h2></div></header><div className="admin-documents">{expediente.documents.map((document) => <article className={document.available ? '' : 'missing'} key={document.field}><div><strong>{document.label}</strong><span>{document.available ? 'Archivo asignado' : 'Sin archivo asignado'}</span></div>{document.available && <a className="btn btn-sm btn-outline-primary" href={`/api/admin/tramites/${encodeURIComponent(clave)}/documentos/${document.field}`} target="_blank" rel="noreferrer">Descargar archivo asignado</a>}</article>)}</div></section>
-    <div className="admin-review-actions">{canReview && <><button className="btn admin-observe-button" type="button" onClick={sendObservations}>Enviar observaciones</button><button className="btn btn-primary" type="button" onClick={() => onApprove({ clave, nombre_comercial: general.nombre_comercial })}>Aprobar Registro</button></>}{Number(general.aprobado) === 1 && <a className="btn btn-primary" href={`/api/admin/tramites/${encodeURIComponent(clave)}/cedula`} target="_blank" rel="noreferrer">Ver Cédula RET</a>}</div>
+    <div className="admin-review-actions">{canObserve && <button className="btn admin-observe-button" type="button" onClick={sendObservations}>Enviar observaciones</button>}{isExpired && <button className="btn btn-danger" type="button" onClick={sendToExpired}>Enviar a Vencidos</button>}{canReview && <button className="btn btn-primary" type="button" onClick={() => onApprove({ clave, nombre_comercial: general.nombre_comercial })}>Aprobar Registro</button>}{Number(general.aprobado) === 1 && !isExpired && <a className="btn btn-primary" href={`/api/admin/tramites/${encodeURIComponent(clave)}/cedula`} target="_blank" rel="noreferrer">Ver Cédula RET</a>}</div>
     <p className="admin-review-note">Abrir o descargar los documentos no aprueba el registro. La aprobación ocurre solamente al pulsar <strong>Aprobar Registro</strong>.</p>
   </section>
 }

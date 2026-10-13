@@ -41,7 +41,7 @@
 .activity-day i { display: block; width: min(42px, 72%); min-height: 2px; border-radius: 8px 8px 2px 2px; background: linear-gradient(#08adc8, #087eb8); }
 .activity-day span { color: var(--ret-muted); font-size: 11px; font-weight: 700; text-transform: capitalize; }
 .admin-shortcuts { margin-bottom: 18px; }
-.admin-shortcuts > div { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; padding: 4px 24px 24px; }
+.admin-shortcuts > div { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; padding: 4px 24px 24px; }
 .admin-shortcuts button { display: grid; grid-template-columns: 1fr auto; gap: 6px 14px; padding: 16px; border: 1px solid #d5e5ea; border-radius: 13px; background: #f8fbfc; color: var(--ret-navy); text-align: left; cursor: pointer; }
 .admin-shortcuts button span { font-size: 11px; font-weight: 800; }
 .admin-shortcuts button strong { font: 600 23px Georgia, serif; }
