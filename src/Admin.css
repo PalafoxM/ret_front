@@ -62,7 +62,8 @@
 .admin-table-wrap td { color: var(--ret-text); }
 .admin-status { display: inline-block; padding: 5px 9px; border-radius: 20px; background: #eef3f5; color: #52666e; font-size: 10px; font-weight: 800; }
 .admin-status.aprobado, .admin-status.concluido { background: #e9f8ef; color: #167849; }
-.admin-status.pendiente, .admin-status.vencido { background: #fff0ee; color: #b64136; }
+.admin-status.pendiente { background: #fff0ee; color: #b64136; }
+.admin-status.vencido { background: #fff3cd; color: #856404; }
 .admin-status.renovacion { background: #fff5db; color: #936000; }
 .admin-row-actions { display: flex; gap: 7px; }
 .admin-row-actions .btn { white-space: nowrap; }
