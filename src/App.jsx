@@ -2201,6 +2201,39 @@ function RankingCard({ title, items = [], maximum = 1 }) {
   return <section className="admin-panel admin-ranking"><header><span className="eyebrow">Top 6 visibles</span><h2>{title}</h2></header><div>{items.map((item) => <article key={item.label}><div><span title={cleanCatalogText(item.label)}>{cleanCatalogText(item.label)}</span><strong>{Number(item.total).toLocaleString('es-MX')}</strong></div><i><b style={{ width: `${(Number(item.total) / maximum) * 100}%` }} /></i></article>)}</div></section>
 }
 
+function CedulaVerificationPage({ clave, cadena }) {
+  const [result, setResult] = useState({ loading: true, data: null, message: '' })
+
+  useEffect(() => {
+    const controller = new AbortController()
+    apiFetch(`/api/cedulas/verificar/${encodeURIComponent(clave)}/${encodeURIComponent(cadena)}`, { signal: controller.signal })
+      .then((response) => response.json())
+      .then((payload) => setResult({ loading: false, data: payload.data, message: payload.message || '' }))
+      .catch((error) => {
+        if (error.name !== 'AbortError') setResult({ loading: false, data: null, message: safeErrorMessage(error, 'No fue posible verificar la Cédula RET.') })
+      })
+    return () => controller.abort()
+  }, [clave, cadena])
+
+  return <main className="verification-page">
+    <section className="verification-card" aria-live="polite">
+      <header className="verification-header"><div className="verification-logos"><img src={logogto} alt="Gobierno del Estado de Guanajuato" /><img src={logoRet} alt="Registro Estatal de Turismo" /></div><span>Verificación pública</span></header>
+      {result.loading ? <div className="verification-state"><span className="verification-spinner" /><h1>Verificando Cédula RET</h1><p>Consultando la información oficial del registro…</p></div>
+        : result.data ? <div className="verification-content">
+          <div className="verification-valid"><span aria-hidden="true">✓</span><div><small>Cédula RET válida</small><strong>{result.data.clave}</strong></div></div>
+          <h1>{result.data.nombre_comercial || 'Establecimiento turístico'}</h1>
+          <dl className="verification-details">
+            <div><dt>Domicilio</dt><dd>{result.data.domicilio || 'No disponible'}</dd></div>
+            <div><dt>Giro turístico</dt><dd>{cleanCatalogText(result.data.giro) || 'No disponible'}</dd></div>
+            <div><dt>Fecha de inscripción</dt><dd>{result.data.fecha_inscripcion || 'No disponible'}</dd></div>
+            <div><dt>Vigencia</dt><dd>{result.data.vigencia || 'No disponible'}</dd></div>
+          </dl>
+          <p className="verification-note">Información consultada directamente en el Registro Estatal de Turismo del Estado de Guanajuato.</p>
+        </div> : <div className="verification-state verification-error"><span aria-hidden="true">!</span><h1>Cédula no válida</h1><p>{result.message}</p></div>}
+    </section>
+  </main>
+}
+
 export default function App() {
   const [user, setUser] = useState(null)
   const [admin, setAdmin] = useState(null)
@@ -2248,6 +2281,8 @@ export default function App() {
     setAdmin(null)
   }
 
+  const verificationMatch = window.location.pathname.match(/^\/verificar\/(RET[A-Z0-9-]{4,40})\/(\d{13}\.[a-f0-9]{64})\/?$/i)
+  if (verificationMatch) return <CedulaVerificationPage clave={verificationMatch[1].toUpperCase()} cadena={verificationMatch[2]} />
   if (checkingSession) return <div className="session-loader">Verificando sesión…</div>
   if (admin) return <AdminDashboard admin={admin} onLogout={adminLogout} />
   if (user) return <AuthenticatedWizard key={user.clave} user={user} onLogout={logout} onUserChange={setUser} />
