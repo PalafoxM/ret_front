@@ -2281,7 +2281,7 @@ export default function App() {
     setAdmin(null)
   }
 
-  const verificationMatch = window.location.pathname.match(/^\/verificar\/(RET[A-Z0-9-]{4,40})\/(\d{13}\.[a-f0-9]{64})\/?$/i)
+  const verificationMatch = window.location.pathname.match(/^\/verificar\/(RET[A-Z0-9-]{4,40})\/(\d{13}\.[a-f0-9]{64}|[A-Za-z0-9_-]{64,256})\/?$/i)
   if (verificationMatch) return <CedulaVerificationPage clave={verificationMatch[1].toUpperCase()} cadena={verificationMatch[2]} />
   if (checkingSession) return <div className="session-loader">Verificando sesión…</div>
   if (admin) return <AdminDashboard admin={admin} onLogout={adminLogout} />
