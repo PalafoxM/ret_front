@@ -2181,11 +2181,12 @@ function AdminExpediente({ clave, onBack, onApprove, onObserved }) {
   if (!expediente) return <section className="admin-content"><button className="admin-back" type="button" onClick={onBack}>← Volver al panel</button>{message ? <p className="general-message">{message}</p> : <div className="form-loading">Cargando expediente…</div>}</section>
   const general = expediente.general || {}
   const isExpired = general.estatus === 'Vencido'
+  const isPending = general.estatus === 'Pendiente'
   const canReview = Number(general.concluido) === 1 && Number(general.aprobado) !== 1 && !isExpired
-  const canObserve = canReview || isExpired
+  const canObserve = isPending || canReview || isExpired
   const statusClass = String(general.estatus || 'Pendiente').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   return <section className="admin-content admin-file-view">
-    <button className="admin-back" type="button" onClick={onBack}>← Volver a Concluidos (Para Validar)</button>
+    <button className="admin-back" type="button" onClick={onBack}>← Volver al listado de trámites</button>
     <div className="admin-file-heading"><div><span className="eyebrow">Expediente administrativo</span><h1>{general.nombre_comercial || clave}</h1><p><strong>{clave}</strong> · {cleanCatalogText(general.giro_nombre)} · {general.municipio_nombre}</p></div><span className={`admin-status ${statusClass}`}>{general.estatus === 'Concluido' ? 'Concluido (Para Validar)' : general.estatus}</span></div>
     {message && <p className="general-message">{message}</p>}
     <section className="admin-panel admin-file-section"><header><div><span className="eyebrow">Información principal</span><h2>Datos generales</h2></div></header><AdminDetailGrid data={general} fields={ADMIN_GENERAL_FIELDS} /></section>
