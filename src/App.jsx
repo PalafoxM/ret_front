@@ -2262,6 +2262,20 @@ export default function App() {
   const [checkingSession, setCheckingSession] = useState(true)
 
   useEffect(() => {
+    const url = new URL(window.location.href)
+    if (url.searchParams.get('motivo') !== 'sesion-administrativa-requerida') return
+    url.searchParams.delete('motivo')
+    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
+    Swal.fire({
+      icon: 'info',
+      title: 'Sesión administrativa requerida',
+      text: 'Inicia sesión como administrador para consultar este documento.',
+      confirmButtonText: 'Entendido',
+      confirmButtonColor: '#0878b9',
+    })
+  }, [])
+
+  useEffect(() => {
     Promise.all([
       apiFetch('/api/admin/me').then((response) => response.json()).catch(() => null),
       apiFetch('/api/auth/me').then((response) => response.json()).catch(() => null),
