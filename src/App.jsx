@@ -2002,12 +2002,11 @@ function AdminDashboard({ admin, onLogout }) {
   const maxMunicipio = Math.max(...(dashboard?.byMunicipio || []).map((item) => Number(item.total)), 1)
   const maxActivity = Math.max(...(dashboard?.activity || []).map((item) => Number(item.total)), 1)
   const metricCards = [
-    ['Registros activos', metrics.activos, '◉', 'active'], ['Registros de hoy', metrics.hoy, '+', 'today'],
+    ['Total de registros', metrics.total_registros, '◉', 'active'], ['Registros de hoy', metrics.hoy, '+', 'today'],
     ['Pendientes', metrics.pendientes, '◷', 'pending'], ['Concluidos (Para Validar)', metrics.concluidos, '✓', 'complete'],
     ['Aprobados', metrics.aprobados, '★', 'approved'], ['Renovaciones', metrics.renovaciones, '↻', 'renewal'],
-    ['Vencidos', metrics.vencidos, '!', 'expired'],
   ]
-  const quickLinks = [['Pendiente', 'Pendientes', metrics.pendientes], ['Concluido', 'Concluidos (Para Validar)', metrics.concluidos], ['Aprobado', 'Aprobados', metrics.aprobados], ['Renovación', 'Renovaciones', metrics.renovaciones], ['Vencido', 'Vencidos', metrics.vencidos]]
+  const quickLinks = [['Pendiente', 'Pendientes', metrics.pendientes], ['Concluido', 'Concluidos (Para Validar)', metrics.concluidos], ['Aprobado', 'Aprobados', metrics.aprobados], ['Renovación', 'Renovaciones', metrics.renovaciones]]
   const topbar = <header className="admin-topbar"><div><span className="admin-brand-logos"><img src={logoRet} alt="RET" /><img src={logogto} alt="Gobierno de Guanajuato" /></span><span className="admin-brand-title">Administración RET</span></div><div className="admin-user"><button type="button" onClick={() => { setShowUsers(false); setShowReports(false); setSelectedClave('') }}>Panel ejecutivo</button><button type="button" onClick={() => { setShowUsers(true); setShowReports(false); setSelectedClave('') }}>Usuarios</button><button type="button" onClick={() => { setShowReports(true); setShowUsers(false); setSelectedClave('') }}>Reportes Excel</button><span><strong>{admin.name}</strong><small>{admin.email}</small></span><button type="button" onClick={onLogout}>Cerrar sesión</button></div></header>
   if (showReports) return <main className="admin-dashboard">{topbar}<AdminReports /></main>
   if (showUsers) return <main className="admin-dashboard">{topbar}<AdminUsers /></main>
@@ -2055,9 +2054,9 @@ function AdminReports() {
   const stateReports = (reports || []).filter((report) => report.category === 'Estado del trámite')
   const appReports = (reports || []).filter((report) => report.category === 'Aplicación móvil')
   return <section className="admin-content admin-reports-view">
-    <div className="admin-heading"><span className="eyebrow">Exportación de información</span><h1>Reportes Excel</h1><p>Nueve reportes actualizados directamente desde la base de datos.</p></div>
+    <div className="admin-heading"><span className="eyebrow">Exportación de información</span><h1>Reportes Excel</h1><p>{reports ? `${reports.length} reportes actualizados directamente desde la base de datos.` : 'Reportes actualizados directamente desde la base de datos.'}</p></div>
     {message && <p className="general-message" role="status">{message}</p>}
-    {!reports ? <div className="form-loading">Cargando reportes…</div> : <><AdminReportGroup eyebrow="Seis reportes" title="Por estado del trámite" items={stateReports} /><AdminReportGroup eyebrow="Tres reportes" title="Información para la app" items={appReports} /></>}
+    {!reports ? <div className="form-loading">Cargando reportes…</div> : <><AdminReportGroup eyebrow={`${stateReports.length} reportes`} title="Por estado del trámite" items={stateReports} /><AdminReportGroup eyebrow={`${appReports.length} reportes`} title="Información para la app" items={appReports} /></>}
   </section>
 }
 
