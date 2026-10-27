@@ -401,6 +401,7 @@ function LoginPanel({ onLogin, onAdminLogin }) {
         <button className="secondary-button" type="button" onClick={() => setShowRegistration(true)}>Registrarse <span aria-hidden="true">+</span></button>
         <button className="admin-access-button" type="button" onClick={adminLogin}>Acceso administrativo</button>
         <button className="app-download-button" type="button" onClick={showAppNotice}><span aria-hidden="true">⇩</span><span><strong>Descarga la app</strong><small>Disponible muy pronto</small></span></button>
+        <p className="login-contact"><span>Contacto</span><a href="tel:+524721039900">472 103 9900</a><small>Ext. 158</small></p>
         {message && <p className="form-message" role="status">{message}</p>}
       </form>
     </div>
@@ -1906,8 +1907,16 @@ function MapPanel() {
     setSelectedGiro(event.target.value)
   }
 
+  const showCitizenResource = (resource) => Swal.fire({
+    icon: 'info',
+    title: resource,
+    text: 'Este contenido estará disponible próximamente.',
+    confirmButtonText: 'Entendido',
+    confirmButtonColor: '#0878b9',
+  })
+
   return <main className="map-panel">
-    <div className="map-header"><div><span className="eyebrow map-eyebrow">Explora la red</span><h2>Una entrada más clara, actual y poderosa para el RET.</h2></div><label className="search-box giro-select"><select value={selectedGiro} onChange={changeGiro} aria-label="Seleccionar giro">{giros.length === 0 && <option value="1">🏨 01. Hospedaje</option>}{giros.map((item) => <option key={item.id_giro} value={item.id_giro}>{GIRO_ICONS[item.id_giro] || '📍'} {cleanCatalogText(item.giro)}</option>)}</select></label></div>
+    <div className="map-header"><div><span className="eyebrow map-eyebrow">Explora la red</span><h2>Una entrada más clara, actual y poderosa para el RET.</h2></div><div className="map-header-tools"><div className="citizen-tools"><span>Consulta Ciudadana</span><button type="button" onClick={() => showCitizenResource('Manual de usuario')}>Manual de usuario</button><button type="button" onClick={() => showCitizenResource('Preguntas frecuentes')}>Preguntas frecuentes</button></div><label className="search-box giro-select"><select value={selectedGiro} onChange={changeGiro} aria-label="Seleccionar giro">{giros.length === 0 && <option value="1">🏨 01. Hospedaje</option>}{giros.map((item) => <option key={item.id_giro} value={item.id_giro}>{GIRO_ICONS[item.id_giro] || '📍'} {cleanCatalogText(item.giro)}</option>)}</select></label></div></div>
     <div className="map-shell">
       <MapContainer center={DEFAULT_CENTER} zoom={5} className="map">
         <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
