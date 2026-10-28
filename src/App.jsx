@@ -402,6 +402,7 @@ function LoginPanel({ onLogin, onAdminLogin }) {
         <button className="admin-access-button" type="button" onClick={adminLogin}>Acceso administrativo</button>
         <button className="app-download-button" type="button" onClick={showAppNotice}><span aria-hidden="true">⇩</span><span><strong>Descarga la app</strong><small>Disponible muy pronto</small></span></button>
         <p className="login-contact"><span>Contacto</span><a href="tel:+524721039900">472 103 9900</a><small>Ext. 158</small></p>
+        <p className="login-hours"><span>Horario de atención</span> Lunes a viernes de 8:30 a.m. a 4:00 p.m.</p>
         {message && <p className="form-message" role="status">{message}</p>}
       </form>
     </div>
