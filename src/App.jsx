@@ -1949,7 +1949,7 @@ function MapPanel() {
       <MapContainer center={DEFAULT_CENTER} zoom={5} className="map">
         <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
         <FitMap locations={locations} />
-        {locations.map((item, index) => <Marker key={`${item.nombre_comercial}-${item.latitud}-${item.longitud}-${index}`} position={[item.latitud, item.longitud]} icon={LOCATION_ICONS[filters.giro] || LOCATION_ICONS[1]}><Popup><strong>{GIRO_ICONS[filters.giro]} {item.nombre_comercial || 'Sin nombre'}</strong><p>{item.descripcion || 'Sin descripción disponible'}</p></Popup></Marker>)}
+        {locations.map((item, index) => <Marker key={`${item.nombre_comercial}-${item.latitud}-${item.longitud}-${index}`} position={[item.latitud, item.longitud]} icon={LOCATION_ICONS[filters.giro] || LOCATION_ICONS[1]}><Popup><strong>{GIRO_ICONS[filters.giro]} {item.nombre_comercial || 'Sin nombre'}</strong><div className="map-popup-contact">{item.telefono && <span><b>Teléfono:</b> <a href={`tel:${String(item.telefono).replace(/[^\d+]/g, '')}`}>{item.telefono}</a></span>}<span><b>Dirección:</b> {item.direccion || 'No disponible'}</span></div><p>{item.descripcion || 'Sin descripción disponible'}</p></Popup></Marker>)}
       </MapContainer>
       <div className={`map-status ${status}`}><span className="pulse-dot" />{status === 'loading' && 'Cargando ubicaciones…'}{status === 'ready' && `${locations.length} ${locations.length === 1 ? 'ubicación' : 'ubicaciones'}`}{status === 'error' && 'No se pudo conectar con el servidor'}</div>
     </div>
