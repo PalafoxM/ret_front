@@ -576,9 +576,9 @@ function DatosLegalesStep({ onContinue, onBack }) {
   const selectFile = (name, event) => {
     const file = event.target.files?.[0]
     if (!file) return
-    if (file.size >= 10 * 1024 * 1024) {
+    if (file.size > 20 * 1024 * 1024) {
       event.target.value = ''
-      setMessage('Cada archivo debe pesar menos de 10 MB.')
+      setMessage('Cada archivo puede pesar como máximo 20 MB.')
       return
     }
     setMessage('')
@@ -610,7 +610,7 @@ function DatosLegalesStep({ onContinue, onBack }) {
   if (!metadata) return <div className="form-loading">{message || 'Cargando expediente legal…'}</div>
   return <div className="general-form legal-form">
     <div className="technical-nav"><button type="button" onClick={onBack}>← Anterior</button><button type="button" onClick={onContinue}>Siguiente →</button></div>
-    <div className="legal-intro"><div><span className="eyebrow">Paso en curso</span><strong>40% completado</strong></div><p>Adjunta archivos en formato PDF, PNG o JPG con un peso menor a 10 MB cada uno.</p></div>
+    <div className="legal-intro"><div><span className="eyebrow">Paso en curso</span><strong>40% completado</strong></div><p>Adjunta archivos en formato PDF, PNG o JPG con un peso máximo de 20 MB cada uno.</p></div>
     <FormSection icon="⚖️" title="Datos Legales de Organización">
       <div className="document-list">{LEGAL_DOCUMENTS.map((document) => {
         const required = isRequired(document)
@@ -652,9 +652,9 @@ function DocumentacionGraficaStep({ onContinue, onBack }) {
   const selectImage = (name, event) => {
     const file = event.target.files?.[0]
     if (!file) return
-    if (file.size >= 10 * 1024 * 1024) {
+    if (file.size > 20 * 1024 * 1024) {
       event.target.value = ''
-      setMessage('Cada imagen debe pesar menos de 10 MB.')
+      setMessage('Cada imagen puede pesar como máximo 20 MB.')
       return
     }
     const preview = URL.createObjectURL(file)
@@ -691,7 +691,7 @@ function DocumentacionGraficaStep({ onContinue, onBack }) {
   if (!metadata) return <div className="form-loading">{message || 'Cargando documentación gráfica…'}</div>
   return <div className="general-form graphic-form">
     <div className="technical-nav"><button type="button" onClick={onBack}>← Anterior</button><button type="button" onClick={onContinue}>Siguiente →</button></div>
-    <div className="legal-intro"><div><span className="eyebrow">Paso en curso</span><strong>60% completado</strong></div><p>Adjunta imágenes PNG o JPG, menores a 10 MB y con resolución máxima de 5000 × 5000 píxeles.</p></div>
+    <div className="legal-intro"><div><span className="eyebrow">Paso en curso</span><strong>60% completado</strong></div><p>Adjunta imágenes PNG o JPG, de máximo 20 MB y con resolución máxima de 5000 × 5000 píxeles.</p></div>
     <FormSection icon="🖼️" title="Documentación Gráfica">
       <div className="graphic-list">{GRAPHIC_DOCUMENTS.map((document) => {
         const selected = selectedImages[document.name]
