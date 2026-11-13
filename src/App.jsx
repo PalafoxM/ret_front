@@ -692,16 +692,32 @@ function DatosTecnicosStep({ onContinue, onBack }) {
 }
 
 const LEGAL_DOCUMENTS = [
-  { name: 'rfc', title: 'Constancia de Situación Fiscal / RFC', help: 'No mayor a 3 meses de antigüedad.', always: true },
-  { name: 'curp', title: 'CURP', help: 'Documento CURP vigente.' },
-  { name: 'ife', title: 'Identificación Oficial con Fotografía / INE', help: 'Identificación vigente.', always: true },
-  { name: 'licencia_suelo', title: 'Constancia de Situación Fiscal con actividad económica', help: 'No mayor a 3 meses y con actividad de acuerdo con el giro.', always: true },
-  { name: 'escritura_publica', title: 'Escritura Pública / Contrato de Arrendamiento o Comodato', help: 'Debe corresponder al domicilio donde se presta el servicio y estar vigente.', always: true },
-  { name: 'acta_constitutiva', title: 'Acta Constitutiva y carta poder del representante', help: 'Obligatorio para personas morales.', moral: true },
-  { name: 'rfc_legal', title: 'RFC del representante legal', help: 'Obligatorio para personas morales.', moral: true },
-  { name: 'domicilio', title: 'Comprobante de Domicilio', help: 'No mayor a 3 meses y del lugar donde se presta el servicio.', always: true },
-  { name: 'protocolo_higiene', title: 'Protocolo de Higiene', help: 'Aplica para hospedaje mediante plataformas digitales.', digital: true },
+  { name: 'rfc', title: 'Constancia de Situación Fiscal', moralTitle: 'Constancia de Situación Fiscal de la persona moral', help: 'No mayor a 3 meses de antigüedad.' },
+  { name: 'ife', title: 'Identificación oficial vigente (INE o pasaporte)', moralTitle: 'Identificación oficial del representante legal (INE o pasaporte)', help: 'La identificación debe encontrarse vigente.' },
+  { name: 'escritura_publica', title: 'Escritura pública, Contrato de arrendamiento o Contrato de comodato', moralTitle: 'Escritura pública o Contrato de arrendamiento', help: 'Debe corresponder al domicilio donde se presta el servicio y estar vigente.' },
+  { name: 'curp', title: 'CURP', moralTitle: 'CURP del representante legal', help: 'Adjunta el documento CURP vigente.' },
+  { name: 'rfc_legal', title: 'Constancia de Situación Fiscal del representante legal', help: 'Documento correspondiente al representante legal.' },
+  { name: 'acta_constitutiva', title: 'Acta constitutiva de la persona moral y poder notarial', help: 'Documento constitutivo y poder del representante legal.' },
+  { name: 'licencia_suelo', title: 'Licencia de uso de suelo o Constancia de Situación Fiscal', help: 'Con actividad económica de acuerdo con el giro seleccionado.' },
+  { name: 'domicilio', title: 'Comprobante de domicilio', help: 'No mayor a 3 meses y del lugar donde se presta el servicio.' },
+  { name: 'credencial_guia', title: 'Credencial de guía vigente', help: 'Adjunta la credencial oficial vigente.' },
+  { name: 'protocolo_higiene', title: 'Protocolo de higiene', help: 'Aplica para hospedaje mediante plataformas digitales.' },
+  { name: 'carta_protesta', title: 'Carta protesta', help: 'Carta protesta correspondiente al establecimiento.' },
 ]
+
+function requiredLegalDocumentNames(giro, tipoPersona) {
+  if (Number(giro) === 3) return new Set(['rfc', 'ife', 'curp', 'credencial_guia', 'domicilio'])
+  const required = new Set(['rfc', 'ife', 'escritura_publica', 'curp', 'licencia_suelo', 'domicilio'])
+  if (Number(tipoPersona) === 2) {
+    required.add('rfc_legal')
+    required.add('acta_constitutiva')
+  }
+  if (Number(giro) === 17) {
+    required.add('protocolo_higiene')
+    required.add('carta_protesta')
+  }
+  return required
+}
 
 function DatosLegalesStep({ onContinue, onBack }) {
   const [metadata, setMetadata] = useState(null)
@@ -718,7 +734,8 @@ function DatosLegalesStep({ onContinue, onBack }) {
     return () => controller.abort()
   }, [])
 
-  const isRequired = (document) => document.always || (document.moral && Number(metadata?.tipo_persona) === 2) || (document.digital && Number(metadata?.giro) === 17)
+  const requiredDocuments = requiredLegalDocumentNames(metadata?.giro, metadata?.tipo_persona)
+  const isRequired = (document) => requiredDocuments.has(document.name)
   const selectFile = (name, event) => {
     const file = event.target.files?.[0]
     if (!file) return
@@ -732,7 +749,7 @@ function DatosLegalesStep({ onContinue, onBack }) {
   }
   const save = async (form) => {
     if (form && !form.reportValidity()) return
-    if (LEGAL_DOCUMENTS.some((document) => isRequired(document) && !metadata.files?.[document.name] && !selectedFiles[document.name])) {
+    if (LEGAL_DOCUMENTS.some((document) => requiredDocuments.has(document.name) && !metadata.files?.[document.name] && !selectedFiles[document.name])) {
       setMessage('Adjunta todos los documentos obligatorios antes de continuar.')
       return
     }
@@ -758,11 +775,12 @@ function DatosLegalesStep({ onContinue, onBack }) {
     <div className="technical-nav"><button type="button" onClick={onBack}>← Anterior</button><button type="button" onClick={onContinue}>Siguiente →</button></div>
     <div className="legal-intro"><div><span className="eyebrow">Paso en curso</span><strong>40% completado</strong></div><p>Adjunta archivos en formato PDF, PNG o JPG con un peso máximo de 20 MB cada uno.</p></div>
     <FormSection icon="⚖️" title="Datos Legales de Organización">
-      <div className="document-list">{LEGAL_DOCUMENTS.map((document) => {
+      <div className="document-list">{LEGAL_DOCUMENTS.filter((document) => requiredDocuments.has(document.name)).map((document) => {
         const required = isRequired(document)
         const existing = metadata.files?.[document.name]
         const selected = selectedFiles[document.name]
-        return <article className="document-card" key={document.name}><div className="document-copy"><strong>{document.title}{required && <b> *</b>}</strong><small>{document.help}</small></div><label className={selected || existing ? 'has-file' : ''}><input type="file" name={document.name} accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" onChange={(event) => selectFile(document.name, event)} /><span>{selected ? selected.name : existing ? 'Reemplazar archivo' : 'Seleccionar archivo'}</span></label>{existing && !selected && <a href={`/api/form/datos-legales/archivo/${document.name}`} target="_blank" rel="noreferrer">Ver archivo guardado</a>}</article>
+        const title = Number(metadata.tipo_persona) === 2 && document.moralTitle ? document.moralTitle : document.title
+        return <article className="document-card" key={document.name}><div className="document-copy"><strong>{title}{required && <b> *</b>}</strong><small>{document.help}</small></div><label className={selected || existing ? 'has-file' : ''}><input type="file" name={document.name} accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" onChange={(event) => selectFile(document.name, event)} /><span>{selected ? selected.name : existing ? 'Reemplazar archivo' : 'Seleccionar archivo'}</span></label>{existing && !selected && <a href={`/api/form/datos-legales/archivo/${document.name}`} target="_blank" rel="noreferrer">Ver archivo guardado</a>}</article>
       })}</div>
     </FormSection>
     {message && <p className="general-message" role="status">{message}</p>}
