@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { Children, useCallback, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import Select from 'react-select'
 import { MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet'
 import { divIcon } from 'leaflet'
 import Swal from 'sweetalert2'
@@ -255,9 +256,9 @@ function RegistrationModal({ onClose, accountEmail = '', onRegistered }) {
         <dl><div><dt>Clave RET del establecimiento</dt><dd>{registrationResult.clave}</dd></div></dl>
         <button className="registration-submit" type="button" onClick={() => onRegistered ? onRegistered(registrationResult) : onClose()}>Finalizar</button>
       </div> : <form className="registration-form" onSubmit={submitRegistration}>
-        <label className="registration-field registration-wide">Registro Federal de Contribuyentes (RFC)<input name="rfc" placeholder="Ej. ABCD010203EF4" minLength="12" maxLength="13" required /></label>
-        <label className="registration-field">Giro comercial<select name="giro" defaultValue="" required><option value="" disabled>Elegir giro…</option>{giros.map((item) => <option key={item.id_giro} value={item.id_giro}>{GIRO_ICONS[item.id_giro] || '📍'} {cleanCatalogText(item.giro)}</option>)}</select></label>
-        <label className="registration-field">Municipio<select name="municipio" defaultValue="" required><option value="" disabled>Elegir municipio…</option>{municipios.map((item) => <option key={item.id_municipio} value={item.id_municipio}>{item.municipio}</option>)}</select></label>
+        {!usesExistingAccount && <label className="registration-field registration-wide">Registro Federal de Contribuyentes (RFC)<input name="rfc" placeholder="Ej. ABCD010203EF4" minLength="12" maxLength="13" required /></label>}
+        <label className="registration-field">Giro comercial<SearchableSelect name="giro" defaultValue="" required><option value="" disabled>Elegir giro…</option>{giros.map((item) => <option key={item.id_giro} value={item.id_giro}>{GIRO_ICONS[item.id_giro] || '📍'} {cleanCatalogText(item.giro)}</option>)}</SearchableSelect></label>
+        <label className="registration-field">Municipio<SearchableSelect name="municipio" defaultValue="" required><option value="" disabled>Elegir municipio…</option>{municipios.map((item) => <option key={item.id_municipio} value={item.id_municipio}>{item.municipio}</option>)}</SearchableSelect></label>
         <label className="registration-field registration-wide">Nombre completo o nombre comercial<input name="nombre_completo" maxLength="200" required /></label>
         <label className="registration-field">Fecha de inicio de operación y/o apertura<input name="fecha_inicio" type="date" required /></label>
         <span className="registration-spacer" aria-hidden="true" />
@@ -331,6 +332,7 @@ function LoginPanel({ onLogin, onAdminLogin }) {
         body: JSON.stringify({
           clave: formData.get('clave'),
           password: formData.get('password'),
+          remember: formData.has('remember'),
           recaptcha_token: recaptchaToken,
         }),
       })
@@ -351,7 +353,7 @@ function LoginPanel({ onLogin, onAdminLogin }) {
   const adminLogin = async () => {
     const result = await Swal.fire({
       title: 'Acceso administrativo',
-      html: '<input id="admin-email" class="swal2-input" type="email" autocomplete="username" placeholder="Correo electrónico"><input id="admin-password" class="swal2-input" type="password" autocomplete="current-password" placeholder="Contraseña">',
+      html: '<input id="admin-email" class="swal2-input" type="email" autocomplete="username" placeholder="Correo electrónico"><input id="admin-password" class="swal2-input" type="password" autocomplete="current-password" placeholder="Contraseña"><label class="admin-remember-option"><input id="admin-remember" type="checkbox"><span>Recordarme en este equipo</span></label>',
       showCancelButton: true,
       showLoaderOnConfirm: true,
       confirmButtonText: 'Ingresar',
@@ -361,9 +363,10 @@ function LoginPanel({ onLogin, onAdminLogin }) {
       preConfirm: async () => {
         const email = Swal.getPopup()?.querySelector('#admin-email')?.value.trim().toLowerCase() || ''
         const password = Swal.getPopup()?.querySelector('#admin-password')?.value || ''
+        const remember = Swal.getPopup()?.querySelector('#admin-remember')?.checked === true
         if (!email || !password) { Swal.showValidationMessage('Captura correo y contraseña'); return false }
         try {
-          const response = await apiFetch('/api/admin/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password }) })
+          const response = await apiFetch('/api/admin/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password, remember }) })
           return (await response.json()).data
         } catch (error) {
           Swal.showValidationMessage(safeErrorMessage(error, 'No fue posible iniciar la sesión administrativa.'))
@@ -396,6 +399,7 @@ function LoginPanel({ onLogin, onAdminLogin }) {
         <div className="field"><span aria-hidden="true">🔑</span><input id="clave" name="clave" type="text" placeholder="RET01010023" autoComplete="username" minLength="9" maxLength="17" required /></div>
         <div className="password-row"><label htmlFor="password">Contraseña</label><button className="text-button" type="button" onClick={recoverPassword}>Olvidé mi contraseña</button></div>
         <div className="field"><span aria-hidden="true">◇</span><input id="password" name="password" type="password" placeholder="Tu contraseña" autoComplete="current-password" required /></div>
+        <label className="remember"><input name="remember" type="checkbox" /><span>Recordarme en este equipo</span></label>
         <button className="primary-button" type="submit">Iniciar sesión <span aria-hidden="true">→</span></button>
         {captchaRequired && <small className="recaptcha-notice">Este acceso está protegido por reCAPTCHA Enterprise.</small>}
         <button className="secondary-button" type="button" onClick={() => setShowRegistration(true)}>Registrarse <span aria-hidden="true">+</span></button>
@@ -415,8 +419,59 @@ function FormSection({ icon, title, children }) {
   return <section className="general-section"><header><span>{icon}</span><div><strong>{title}</strong><small>Los campos marcados con * son obligatorios.</small></div></header>{children}</section>
 }
 
+function SearchableSelect({ children, value, defaultValue = '', onChange, name, required, disabled, className = '', ...props }) {
+  const inputId = useId()
+  const [internalValue, setInternalValue] = useState(String(defaultValue ?? ''))
+  const controlled = value !== undefined
+  const currentValue = controlled ? String(value ?? '') : internalValue
+  const optionElements = Children.toArray(children).filter((child) => child?.type === 'option')
+  const textLabel = (content) => Children.toArray(content).join('')
+  const placeholderElement = optionElements.find((child) => String(child.props.value ?? '') === '')
+  const options = optionElements
+    .filter((child) => String(child.props.value ?? textLabel(child.props.children)) !== '')
+    .map((child) => ({
+      value: String(child.props.value ?? textLabel(child.props.children)),
+      label: textLabel(child.props.children),
+      isDisabled: Boolean(child.props.disabled),
+    }))
+  const selectedOption = options.find((option) => option.value === currentValue) || null
+  const handleChange = (option) => {
+    const nextValue = option?.value || ''
+    if (!controlled) setInternalValue(nextValue)
+    onChange?.({ target: { name, value: nextValue } })
+  }
+  return <Select
+    {...props}
+    inputId={props.id || inputId}
+    name={name}
+    className={`searchable-select ${className}`.trim()}
+    classNamePrefix="ret-select"
+    options={options}
+    value={selectedOption}
+    onChange={handleChange}
+    placeholder={placeholderElement ? textLabel(placeholderElement.props.children) : 'Buscar o seleccionar…'}
+    isDisabled={disabled}
+    isClearable={!required}
+    isSearchable
+    required={required}
+    noOptionsMessage={() => 'Sin resultados'}
+    menuPortalTarget={document.body}
+    menuPosition="fixed"
+    styles={{ menuPortal: (base) => ({ ...base, zIndex: 4000 }) }}
+  />
+}
+
 function MapClickHandler({ onChange }) {
   useMapEvents({ click: (event) => onChange(event.latlng) })
+  return null
+}
+
+function RecenterFormMap({ position }) {
+  const map = useMap()
+  const [latitude, longitude] = position
+  useEffect(() => {
+    map.setView([latitude, longitude], 16, { animate: true })
+  }, [map, latitude, longitude])
   return null
 }
 
@@ -425,6 +480,8 @@ function DatosGeneralesStep({ user, onContinue }) {
   const [subrubros, setSubrubros] = useState([])
   const [message, setMessage] = useState('')
   const [saving, setSaving] = useState(false)
+  const [locationStatus, setLocationStatus] = useState({ loading: false, message: '' })
+  const geocodeRequest = useRef(0)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -439,6 +496,55 @@ function DatosGeneralesStep({ user, onContinue }) {
   const position = data && Number(data.latitud) >= 14 && Number(data.latitud) <= 33
     ? [Number(data.latitud), Number(data.longitud) > 0 ? -Number(data.longitud) : Number(data.longitud)]
     : [21.019, -101.257]
+
+  const setLocation = async ({ lat, lng }, source = 'map') => {
+    const latitude = Number(lat)
+    const longitude = Number(lng)
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return
+    const requestId = ++geocodeRequest.current
+    setData((current) => ({ ...current, latitud: latitude, longitud: longitude }))
+    setLocationStatus({ loading: true, message: 'Consultando la dirección de esta ubicación…' })
+    try {
+      const query = new URLSearchParams({ latitud: String(latitude), longitud: String(longitude) })
+      const response = await apiFetch(`/api/geocodificacion/reversa?${query}`)
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.message || 'No fue posible consultar la dirección')
+      if (requestId !== geocodeRequest.current) return
+      setData((current) => ({
+        ...current,
+        latitud: latitude,
+        longitud: longitude,
+        ...(result.data.calle ? { calle: result.data.calle } : {}),
+        ...(result.data.numero ? { numero: result.data.numero } : {}),
+        ...(result.data.colonia ? { colonia: result.data.colonia } : {}),
+        ...(result.data.cp ? { cp: result.data.cp } : {}),
+      }))
+      setLocationStatus({ loading: false, message: 'Ubicación y dirección actualizadas. Puedes corregir cualquier campo antes de guardar.' })
+    } catch {
+      if (requestId !== geocodeRequest.current) return
+      setLocationStatus({ loading: false, message: source === 'browser'
+        ? 'Ubicación localizada. No fue posible completar toda la dirección; puedes capturarla manualmente.'
+        : 'Marcador actualizado. Revisa o captura manualmente los datos de la dirección.' })
+    }
+  }
+
+  const requestCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      setLocationStatus({ loading: false, message: 'Este navegador no permite obtener la ubicación. Puedes elegirla directamente en el mapa.' })
+      return
+    }
+    setLocationStatus({ loading: true, message: 'Esperando autorización del navegador…' })
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => setLocation({ lat: coords.latitude, lng: coords.longitude }, 'browser'),
+      (error) => {
+        const denied = error.code === error.PERMISSION_DENIED
+        setLocationStatus({ loading: false, message: denied
+          ? 'No autorizaste el acceso a la ubicación. Puedes seleccionar el punto manualmente en el mapa.'
+          : 'No fue posible obtener tu ubicación. Intenta nuevamente o selecciona el punto en el mapa.' })
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+    )
+  }
 
   const save = async (form) => {
     if (form && !form.reportValidity()) return
@@ -463,14 +569,13 @@ function DatosGeneralesStep({ user, onContinue }) {
 
   return <div className="general-form">
     <FormSection icon="ⓘ" title="Datos Generales"><div className="general-grid"><label className="wide">Nombre comercial<input value={data.nombre_comercial || ''} readOnly /></label><label className="wide">Persona responsable *<input {...field('contacto')} placeholder="Persona de contacto" required /></label></div></FormSection>
-    <FormSection icon="🏛️" title="Datos Legales"><div className="general-grid"><label>Tipo de persona *<select {...field('tipo_persona')} required><option value="">Seleccionar…</option><option value="1">Persona física</option><option value="2">Persona moral</option></select></label><label>RFC<input value={data.info_rfc || ''} readOnly /></label><label>Razón social *<input {...field('razon_social')} required /></label><label>Representante legal<input {...field('representante_moral')} /></label></div></FormSection>
-    {subrubros.length > 0 && <FormSection icon="🏢" title="Sub-Rubro"><div className="general-grid"><label className="wide">Subrubro al que pertenece *<select {...field('idgiro_subrubro')} required><option value="">Elegir opción…</option>{subrubros.map((item) => <option key={item.idgiro_subrubro} value={item.idgiro_subrubro}>{cleanCatalogText(item.descripcion)}</option>)}</select></label></div></FormSection>}
-    <FormSection icon="📍" title="Dirección"><div className="general-grid"><label className="wide">Calle *<input {...field('calle')} required /></label><label>Número exterior *<input {...field('numero')} required /></label><label>Número interior<input {...field('interior')} /></label><label>Colonia *<input {...field('colonia')} required /></label><label>Municipio<input value={data.municipio_nombre || ''} readOnly /></label><label>Código postal *<input {...field('cp')} inputMode="numeric" required /></label></div></FormSection>
+    <FormSection icon="🏛️" title="Datos Legales"><div className="general-grid"><label>Tipo de persona *<SearchableSelect {...field('tipo_persona')} required><option value="">Seleccionar…</option><option value="1">Persona física</option><option value="2">Persona moral</option></SearchableSelect></label><label>RFC<input value={data.info_rfc || ''} readOnly /></label><label>Razón social *<input {...field('razon_social')} required /></label><label>Representante legal<input {...field('representante_moral')} /></label></div></FormSection>
+    {subrubros.length > 0 && <FormSection icon="🏢" title="Sub-Rubro"><div className="general-grid"><label className="wide">Subrubro al que pertenece *<SearchableSelect {...field('idgiro_subrubro')} required><option value="">Elegir opción…</option>{subrubros.map((item) => <option key={item.idgiro_subrubro} value={item.idgiro_subrubro}>{cleanCatalogText(item.descripcion)}</option>)}</SearchableSelect></label></div></FormSection>}
+    <FormSection icon="📍" title="Dirección"><div className="location-assistant"><div><strong>Ubica tu establecimiento</strong><p>Con tu autorización podemos usar la ubicación del navegador para sugerir la dirección. También puedes mover el marcador o seleccionar otro punto.</p></div><button type="button" disabled={locationStatus.loading} onClick={requestCurrentLocation}>{locationStatus.loading ? 'Localizando…' : '⌖ Usar mi ubicación actual'}</button></div><div className="form-map"><MapContainer center={position} zoom={12}><TileLayer attribution='&copy; OpenStreetMap' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" /><RecenterFormMap position={position} /><MapClickHandler onChange={setLocation} /><Marker position={position} draggable icon={LOCATION_ICONS[user.giro] || LOCATION_ICONS[1]} eventHandlers={{ dragend: (event) => setLocation(event.target.getLatLng()) }} /></MapContainer></div><div className="coordinate-row"><span>Latitud: {Number(position[0]).toFixed(6)}</span><span>Longitud: {Number(position[1]).toFixed(6)}</span></div>{locationStatus.message && <p className={`location-message${locationStatus.loading ? ' loading' : ''}`} role="status">{locationStatus.message}</p>}<div className="general-grid"><label className="wide">Calle *<input {...field('calle')} required /></label><label>Número exterior *<input {...field('numero')} required /></label><label>Número interior<input {...field('interior')} /></label><label>Colonia *<input {...field('colonia')} required /></label><label>Municipio<input value={data.municipio_nombre || ''} readOnly /></label><label>Código postal *<input {...field('cp')} inputMode="numeric" required /></label></div></FormSection>
     <FormSection icon="📞" title="Teléfonos"><div className="general-grid"><label>Teléfono *<input {...field('telefono')} type="tel" required /></label><label>Teléfono de atención al cliente *<input {...field('telefono_comercial')} type="tel" required /></label><label>Teléfono alternativo<input {...field('telefono2')} type="tel" /></label></div></FormSection>
     <FormSection icon="📶" title="Datos Electrónicos"><div className="general-grid"><label>Sitio web<input {...field('web')} placeholder="https://" /></label><label>Correo electrónico<input value={data.correo || user.email || ''} readOnly /></label><label>Correo de atención al cliente *<input {...field('correo_atncli')} type="email" required /></label><label>Facebook Fan Page<input {...field('facebook')} placeholder="https://" /></label><label>Twitter / X<input {...field('twitter')} placeholder="https://" /></label></div></FormSection>
     <FormSection icon="🏅" title="Certificaciones"><div className="cert-grid">{certification('h', 'Distintivo H')}{certification('m', 'Distintivo M')}{certification('tesoros', 'Tesoros de Guanajuato')}{certification('iso', 'ISO')}{certification('punto_limpio', 'Punto Limpio')}{certification('anfitrion', 'Gran Anfitrión')}{certification('estandares', 'Estándares de Competencia Laboral')}{certification('otro', 'Otra')}<label>Otra, ¿cuál?<input {...field('otrocertificacion')} /></label></div></FormSection>
     <FormSection icon="✎" title="Descripción"><label className="description-field">Descripción promocional *<textarea {...field('descripcion')} rows="5" required /></label></FormSection>
-    <FormSection icon="🌎" title="Georreferenciación"><p className="map-help">Arrastra el pin o selecciona una ubicación en el mapa.</p><div className="form-map"><MapContainer center={position} zoom={12}><TileLayer attribution='&copy; OpenStreetMap' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" /><MapClickHandler onChange={(latlng) => { update('latitud', latlng.lat); update('longitud', latlng.lng) }} /><Marker position={position} draggable icon={LOCATION_ICONS[user.giro] || LOCATION_ICONS[1]} eventHandlers={{ dragend: (event) => { const point = event.target.getLatLng(); update('latitud', point.lat); update('longitud', point.lng) } }} /></MapContainer></div><div className="coordinate-row"><span>Latitud: {Number(position[0]).toFixed(6)}</span><span>Longitud: {Number(position[1]).toFixed(6)}</span></div></FormSection>
     <section className="legal-declarations">
       <label><input type="checkbox" checked={Boolean(Number(data.protesto_juridico))} onChange={(event) => update('protesto_juridico', event.target.checked ? 1 : 0)} required /><span>Declaro bajo protesta de decir verdad que la información y documentación brindada para el presente registro es verídica. <b>*</b></span></label>
       <label><input type="checkbox" checked={Boolean(Number(data.aviso_descripcion))} onChange={(event) => update('aviso_descripcion', event.target.checked ? 1 : 0)} required /><span>Acepto que mi descripción sea modificada para fines de promoción turística en el portal guanajuato.mx por parte del área comercial de la Secretaría de Turismo del Estado de Guanajuato. <b>*</b></span></label>
@@ -526,7 +631,7 @@ function DatosTecnicosStep({ onContinue, onBack }) {
   if (!data) return <div className="form-loading">{message || 'Cargando datos técnicos…'}</div>
   const field = (name) => ({ value: data[name] ?? '', onChange: (event) => update(name, event.target.value) })
   const numberField = (name, label) => <label>{label} *<input {...field(name)} type="number" min="0" max="9999" placeholder="0" required /></label>
-  const yesNo = (name, label) => <label>{label} *<select {...field(name)} required><option value="">Elegir opción…</option><option value="1">Sí</option><option value="0">No</option></select></label>
+  const yesNo = (name, label) => <label>{label} *<SearchableSelect {...field(name)} required><option value="">Elegir opción…</option><option value="1">Sí</option><option value="0">No</option></SearchableSelect></label>
   const market = (name, label) => <label className="market-option"><input type="checkbox" checked={Boolean(Number(data[name]))} onChange={(event) => update(name, event.target.checked ? 1 : 0)} />{label}</label>
 
   return <div className="general-form technical-form">
@@ -536,7 +641,7 @@ function DatosTecnicosStep({ onContinue, onBack }) {
       <hr />
       <div className="general-grid">{yesNo('capacita', '¿Capacitan a sus empleados?')}{yesNo('cert_med', '¿Certificados médicos de sus empleados?')}{yesNo('inst_disca', '¿Instalaciones para personas con discapacidad?')}{yesNo('lgbttit', '¿Tienen formación para brindar trato inclusivo a personas LGBTTTIQ+?')}{yesNo('pet_friendly', '¿Es un espacio Pet Friendly?')}</div>
       <hr />
-      <div className="general-grid"><label>Tipo de inversión *<select {...field('inversion')} required><option value="">Elegir opción…</option><option value="Nacional">Nacional</option><option value="Ambas">Ambas</option><option value="Extranjera">Extranjera</option></select></label><label>Fecha de inicio de operaciones *<input {...field('inicio_opera')} type="date" required /></label><label>Tipo de organización *<select {...field('organizacion')} required><option value="">Elegir opción…</option><option value="Independiente">Independiente</option><option value="Cadena local">Cadena local</option><option value="Cadena regional">Cadena regional</option><option value="Cadena nacional">Cadena nacional</option><option value="Cadena trasnacional">Cadena trasnacional</option></select></label></div>
+      <div className="general-grid"><label>Tipo de inversión *<SearchableSelect {...field('inversion')} required><option value="">Elegir opción…</option><option value="Nacional">Nacional</option><option value="Ambas">Ambas</option><option value="Extranjera">Extranjera</option></SearchableSelect></label><label>Fecha de inicio de operaciones *<input {...field('inicio_opera')} type="date" required /></label><label>Tipo de organización *<SearchableSelect {...field('organizacion')} required><option value="">Elegir opción…</option><option value="Independiente">Independiente</option><option value="Cadena local">Cadena local</option><option value="Cadena regional">Cadena regional</option><option value="Cadena nacional">Cadena nacional</option><option value="Cadena trasnacional">Cadena trasnacional</option></SearchableSelect></label></div>
     </FormSection>
     <FormSection icon="👥" title="Tipo de Mercado"><p className="section-instruction">Elige al menos una opción.</p><div className="market-grid">{market('local', 'Local')}{market('regional', 'Regional')}{market('nacional', 'Nacional')}{market('internacional', 'Internacional')}</div></FormSection>
     <FormSection icon="📂" title="Cámaras y Asociaciones"><div className="general-grid"><label className="wide">¿A qué cadena, cámara o asociación pertenece?<input {...field('cadenaper')} placeholder="Cámaras o asociaciones turísticas" /></label></div></FormSection>
@@ -759,9 +864,9 @@ function HospedajeStep({ onContinue, onBack }) {
     <div className="legal-intro"><div><span className="eyebrow">Paso en curso</span><strong>80% completado</strong></div><p>Los campos marcados como obligatorios deben capturarse antes de continuar.</p></div>
     <FormSection icon="🏨" title="Hospedaje">
       <div className="general-grid">
-        <label>Tipo de establecimiento de hospedaje *<select {...field('establecimiento')} required><option value="">Elegir opción…</option>{LODGING_TYPES.map((value) => <option key={value}>{value}</option>)}</select></label>
-        <label>Tipo *<select {...field('tipo')} required><option value="">Elegir opción…</option>{['Boutique', 'Negocios', 'Tradicional', 'Tránsito', 'Vacacional'].map((value) => <option key={value}>{value}</option>)}</select></label>
-        <label>Tipo 2 *<select {...field('tipo2')} required><option value="">Elegir opción…</option>{['Independiente', 'Operadora'].map((value) => <option key={value}>{value}</option>)}</select></label>
+        <label>Tipo de establecimiento de hospedaje *<SearchableSelect {...field('establecimiento')} required><option value="">Elegir opción…</option>{LODGING_TYPES.map((value) => <option key={value}>{value}</option>)}</SearchableSelect></label>
+        <label>Tipo *<SearchableSelect {...field('tipo')} required><option value="">Elegir opción…</option>{['Boutique', 'Negocios', 'Tradicional', 'Tránsito', 'Vacacional'].map((value) => <option key={value}>{value}</option>)}</SearchableSelect></label>
+        <label>Tipo 2 *<SearchableSelect {...field('tipo2')} required><option value="">Elegir opción…</option>{['Independiente', 'Operadora'].map((value) => <option key={value}>{value}</option>)}</SearchableSelect></label>
         <label>Número de habitaciones *<input {...field('cuartos')} type="number" min="0" max="999999" required /></label>
         <label>Número de pisos *<input {...field('pisos')} type="number" min="0" max="999" required /></label>
       </div>
@@ -769,13 +874,13 @@ function HospedajeStep({ onContinue, onBack }) {
     <FormSection icon="🛏️" title="Servicios en las Habitaciones"><p className="section-instruction">Selecciona los servicios con los que cuentan las habitaciones.</p><div className="lodging-options">{ROOM_SERVICES.map(option)}</div></FormSection>
     <FormSection icon="🔔" title="Servicios Comunes"><p className="section-instruction">Selecciona los servicios comunes del establecimiento.</p><div className="lodging-options">{COMMON_SERVICES.map(option)}</div></FormSection>
     <FormSection icon="🚗" title="Estacionamiento">
-      <div className="general-grid"><label>Número de cajones<input {...field('nocajon')} type="number" min="0" max="9999" /></label><label>Tipo de estacionamiento<select {...field('tipocajon')}><option value="">Elegir opción…</option><option>Interno</option><option>Externo</option></select></label></div>
+      <div className="general-grid"><label>Número de cajones<input {...field('nocajon')} type="number" min="0" max="9999" /></label><label>Tipo de estacionamiento<SearchableSelect {...field('tipocajon')}><option value="">Elegir opción…</option><option>Interno</option><option>Externo</option></SearchableSelect></label></div>
     </FormSection>
     <FormSection icon="🛡️" title="Seguridad y transporte">
       <div className="general-grid">
-        <label>¿Cuenta con seguro de responsabilidad? *<select {...field('seguro')} required><option value="">Elegir opción…</option><option value="0">No</option><option value="1">Sí</option></select></label>
+        <label>¿Cuenta con seguro de responsabilidad? *<SearchableSelect {...field('seguro')} required><option value="">Elegir opción…</option><option value="0">No</option><option value="1">Sí</option></SearchableSelect></label>
         <label>¿Cuál aseguradora?{Number(data.seguro) === 1 && ' *'}<input {...field('aseguradora')} disabled={Number(data.seguro) !== 1} required={Number(data.seguro) === 1} maxLength="50" /></label>
-        <label>¿Cuenta con unidades y espacios para paraderos?<select {...field('unidad')}><option value="">Elegir opción…</option><option value="0">No</option><option value="1">Sí</option></select></label>
+        <label>¿Cuenta con unidades y espacios para paraderos?<SearchableSelect {...field('unidad')}><option value="">Elegir opción…</option><option value="0">No</option><option value="1">Sí</option></SearchableSelect></label>
       </div>
     </FormSection>
     {message && <p className="general-message" role="status">{message}</p>}
@@ -818,9 +923,9 @@ function AgenciaStep({ onContinue, onBack }) {
     <div className="legal-intro"><div><span className="eyebrow">Paso en curso</span><strong>80% completado</strong></div><p>Captura la clasificación comercial de la agencia antes de continuar.</p></div>
     <FormSection icon="✈️" title="Agencia de Viajes">
       <div className="general-grid">
-        <label>Modalidad *<select {...field('modalidad')} required><option value="">Elegir opción…</option>{AGENCY_MODALITIES.map((value) => <option key={value}>{value}</option>)}</select></label>
-        <label>Segmento *<select {...field('segmento')} required><option value="">Elegir opción…</option>{AGENCY_SEGMENTS.map((value) => <option key={value}>{value}</option>)}</select></label>
-        <label>¿Pertenece a una asociación? *<select {...field('asociacion')} required><option value="">Elegir opción…</option><option value="0">No</option><option value="1">Sí</option></select></label>
+        <label>Modalidad *<SearchableSelect {...field('modalidad')} required><option value="">Elegir opción…</option>{AGENCY_MODALITIES.map((value) => <option key={value}>{value}</option>)}</SearchableSelect></label>
+        <label>Segmento *<SearchableSelect {...field('segmento')} required><option value="">Elegir opción…</option>{AGENCY_SEGMENTS.map((value) => <option key={value}>{value}</option>)}</SearchableSelect></label>
+        <label>¿Pertenece a una asociación? *<SearchableSelect {...field('asociacion')} required><option value="">Elegir opción…</option><option value="0">No</option><option value="1">Sí</option></SearchableSelect></label>
         <label>Nombre de la asociación{Number(data.asociacion) === 1 && ' *'}<input {...field('nombre_asociacion')} disabled={Number(data.asociacion) !== 1} required={Number(data.asociacion) === 1} maxLength="100" placeholder="Nombre de la asociación" /></label>
       </div>
     </FormSection>
@@ -875,7 +980,7 @@ function GuiaStep({ onContinue, onBack }) {
     <div className="legal-intro"><div><span className="eyebrow">Paso en curso</span><strong>80% completado</strong></div><p>Captura la clasificación, especialidades e idiomas del guía.</p></div>
     <FormSection icon="🧭" title="Clasificación del Guía">
       <div className="general-grid">
-        <label>Tipo de guía *<select {...field('guia')} required><option value="">Elegir opción…</option>{GUIDE_CLASSIFICATIONS.map((value) => <option key={value}>{value}</option>)}</select></label>
+        <label>Tipo de guía *<SearchableSelect {...field('guia')} required><option value="">Elegir opción…</option>{GUIDE_CLASSIFICATIONS.map((value) => <option key={value}>{value}</option>)}</SearchableSelect></label>
         <label>Número de credencial *<input {...field('num_credencial')} required maxLength="50" placeholder="Número de credencial" /></label>
         <label className="wide">Nombre de la asociación<input {...field('nombre_asociacion')} maxLength="100" placeholder="Opcional" /></label>
       </div>
@@ -919,9 +1024,9 @@ function PromotoresStep({ onContinue, onBack }) {
     <div className="legal-intro"><div><span className="eyebrow">Paso en curso</span><strong>80% completado</strong></div><p>Captura la información operativa y los convenios del establecimiento.</p></div>
     <FormSection icon="🎪" title="Operador y Organizador de Eventos">
       <div className="general-grid">
-        <label>¿Cuenta con licencia? *<select {...field('licencia')} required><option value="">Elegir opción…</option><option value="0">No</option><option value="1">Sí</option></select></label>
-        <label>Zona de operación *<select {...field('zona')} required><option value="">Elegir opción…</option><option value="Establecimiento">Establecimiento</option><option value="Local">Local</option><option value="Via">Vía</option><option value="Aventura">Aventura</option></select></label>
-        <label>¿Cuenta con convenio? *<select {...field('convenio')} required><option value="">Elegir opción…</option><option value="0">No</option><option value="1">Sí</option></select></label>
+        <label>¿Cuenta con licencia? *<SearchableSelect {...field('licencia')} required><option value="">Elegir opción…</option><option value="0">No</option><option value="1">Sí</option></SearchableSelect></label>
+        <label>Zona de operación *<SearchableSelect {...field('zona')} required><option value="">Elegir opción…</option><option value="Establecimiento">Establecimiento</option><option value="Local">Local</option><option value="Via">Vía</option><option value="Aventura">Aventura</option></SearchableSelect></label>
+        <label>¿Cuenta con convenio? *<SearchableSelect {...field('convenio')} required><option value="">Elegir opción…</option><option value="0">No</option><option value="1">Sí</option></SearchableSelect></label>
         <label>Descripción del convenio{Number(data.convenio) === 1 && ' *'}<input {...field('txt_convenio')} disabled={Number(data.convenio) !== 1} required={Number(data.convenio) === 1} maxLength="50" placeholder="Convenio o institución" /></label>
       </div>
     </FormSection>
@@ -970,13 +1075,12 @@ function RestaurantesStep({ onContinue, onBack }) {
     <div className="legal-intro"><div><span className="eyebrow">Paso en curso</span><strong>80% completado</strong></div><p>Captura la operación, capacidad y clasificación del establecimiento.</p></div>
     <FormSection icon="🍽️" title="Servicios de Alimentos y Bebidas">
       <div className="general-grid">
-        <label>Tipo de establecimiento *<select {...field('tipo_establecimiento')} required><option value="">Elegir opción…</option>{RESTAURANT_TYPES.map((value) => <option key={value}>{value}</option>)}</select></label>
-        <label>Tipo de cocina *<select {...field('tipo_cocina')} required><option value="">Elegir opción…</option>{RESTAURANT_KITCHENS.map((value) => <option key={value} value={value}>{value === 'Del_Mar' ? 'Del Mar (catálogo anterior)' : value}</option>)}</select></label>
-        <label>¿Cuenta con licencia? *<select {...field('licencia')} required><option value="">Elegir opción…</option><option value="No">No</option><option value="Si">Sí</option></select></label>
+        <label>Tipo de establecimiento *<SearchableSelect {...field('tipo_establecimiento')} required><option value="">Elegir opción…</option>{RESTAURANT_TYPES.map((value) => <option key={value}>{value}</option>)}</SearchableSelect></label>
+        <label>Tipo de cocina *<SearchableSelect {...field('tipo_cocina')} required><option value="">Elegir opción…</option>{RESTAURANT_KITCHENS.map((value) => <option key={value} value={value}>{value === 'Del_Mar' ? 'Del Mar (catálogo anterior)' : value}</option>)}</SearchableSelect></label>
+        <label>¿Cuenta con licencia? *<SearchableSelect {...field('licencia')} required><option value="">Elegir opción…</option><option value="No">No</option><option value="Si">Sí</option></SearchableSelect></label>
         <label>Número de licencia{data.licencia === 'Si' && ' *'}<input {...field('num_licencia')} disabled={data.licencia !== 'Si'} required={data.licencia === 'Si'} maxLength="40" /></label>
-        <label>¿Cuenta con permiso? *<select {...field('permiso')} required><option value="">Elegir opción…</option><option value="No">No</option><option value="Si">Sí</option></select></label>
+        <label>¿Cuenta con permiso? *<SearchableSelect {...field('permiso')} required><option value="">Elegir opción…</option><option value="No">No</option><option value="Si">Sí</option></SearchableSelect></label>
         <label>Número de permiso de bebidas{data.permiso === 'Si' && ' *'}<input {...field('num_bebidas')} disabled={data.permiso !== 'Si'} required={data.permiso === 'Si'} maxLength="40" /></label>
-        <label>Tipo de servicio *<select {...field('tipo_servicio')} required><option value="">Elegir opción…</option><option value="0">Tipo 0</option><option value="1">Tipo 1</option><option value="2">Tipo 2</option></select></label>
       </div>
     </FormSection>
     <FormSection icon="🕐" title="Horarios de Operación"><p className="section-instruction">Selecciona al menos un horario.</p><div className="lodging-options">{RESTAURANT_SCHEDULES.map(checkbox)}</div></FormSection>
@@ -1025,7 +1129,7 @@ function GolfStep({ onContinue, onBack }) {
   const update = (name, value) => setData((current) => ({ ...current, [name]: value }))
   const field = (name) => ({ value: data[name] ?? '', onChange: (event) => update(name, event.target.value) })
   const checkbox = ([name, label]) => <label className="lodging-option" key={name}><input type="checkbox" checked={Boolean(Number(data[name]))} onChange={(event) => update(name, Number(event.target.checked))} /><span>{label}</span></label>
-  const yesNo = (name, label) => <label>{label} *<select {...field(name)} required><option value="">Elegir opción…</option><option value="No">No</option><option value="Si">Sí</option></select></label>
+  const yesNo = (name, label) => <label>{label} *<SearchableSelect {...field(name)} required><option value="">Elegir opción…</option><option value="No">No</option><option value="Si">Sí</option></SearchableSelect></label>
   const save = async (form) => {
     if (form && !form.reportValidity()) return
     if (!GOLF_TERRAINS.some(([name]) => Number(data[name]) === 1)) { setMessage('Selecciona al menos un tipo de terreno.'); return }
@@ -1104,7 +1208,7 @@ function ArteStep({ onContinue, onBack }) {
     <FormSection icon="🏺" title="Arte Popular y Productos">
       <p className="section-instruction">Selecciona al menos un tipo de establecimiento.</p>
       <div className="lodging-options">{ART_TYPES.map(checkbox)}</div>
-      <div className="general-grid"><label>Operación *<select {...field('operacion')} required><option value="">Elegir opción…</option><option value="Temporal">Temporal</option><option value="Permanentes">Permanentes</option></select></label></div>
+      <div className="general-grid"><label>Operación *<SearchableSelect {...field('operacion')} required><option value="">Elegir opción…</option><option value="Temporal">Temporal</option><option value="Permanentes">Permanentes</option></SearchableSelect></label></div>
       <label className="description-field">Descripción del arte, dulces, productos o artesanías *<textarea {...field('descripcion')} maxLength="5000" rows="6" required placeholder="Describe los productos o expresiones de arte que ofrece el establecimiento" /></label>
     </FormSection>
     {message && <p className="general-message" role="status">{message}</p>}
@@ -1647,7 +1751,7 @@ function RecintoStep({ onContinue, onBack }) {
   return <div className="general-form venue-form">
     <div className="technical-nav"><button type="button" onClick={onBack}>← Anterior</button><button type="button" onClick={onContinue}>Siguiente →</button></div>
     <div className="legal-intro"><div><span className="eyebrow">Paso en curso</span><strong>80% completado</strong></div><p>Captura la modalidad, horario, servicios y formas de pago del recinto.</p></div>
-    <FormSection icon="🎙️" title="Recintos y Salones para Eventos"><div className="general-grid"><label>Horario de servicio *<input {...field('horario')} maxLength="120" required /></label><label>Modalidad *<select {...field('modalidad')} required><option value="">Elegir opción…</option><option value="Centros de Congresos y Exposiciones">Centros de Congresos y Exposiciones</option><option value="Congresos y Exposiciones en Hotel">Congresos y Exposiciones en Hotel</option></select></label></div></FormSection>
+    <FormSection icon="🎙️" title="Recintos y Salones para Eventos"><div className="general-grid"><label>Horario de servicio *<input {...field('horario')} maxLength="120" required /></label><label>Modalidad *<SearchableSelect {...field('modalidad')} required><option value="">Elegir opción…</option><option value="Centros de Congresos y Exposiciones">Centros de Congresos y Exposiciones</option><option value="Congresos y Exposiciones en Hotel">Congresos y Exposiciones en Hotel</option></SearchableSelect></label></div></FormSection>
     <FormSection icon="✓" title="Servicios"><p className="section-instruction">Selecciona al menos un servicio.</p><div className="lodging-options">{VENUE_SERVICES.map(checkbox)}</div></FormSection>
     <FormSection icon="💳" title="Formas de Pago"><div className="lodging-options">{VENUE_PAYMENTS.map(checkbox)}</div><div className="general-grid"><label className="wide">Otra, ¿Cuál?<input {...field('otra_tc')} maxLength="120" /></label></div></FormSection>
     {message && <p className="general-message" role="status">{message}</p>}
@@ -1688,12 +1792,12 @@ function HospedajeDigitalStep({ onContinue, onBack }) {
   return <div className="general-form digital-lodging-form">
     <div className="technical-nav"><button type="button" onClick={onBack}>← Anterior</button><button type="button" onClick={onContinue}>Siguiente →</button></div>
     <div className="legal-intro"><div><span className="eyebrow">Paso en curso</span><strong>80% completado</strong></div><p>Captura la oferta de alojamiento, plataformas, servicios y seguridad.</p></div>
-    <FormSection icon="🏠" title="Hospedaje mediante Plataformas Digitales"><div className="general-grid"><label>Tipo de Alojamiento *<select {...field('categoria')} required><option value="">Elegir opción…</option><option value="1">Alojamiento completo</option><option value="2">Habitación privada</option><option value="3">Habitación compartida</option></select></label><label>Alojamiento que se ofrece *<input {...field('establecimiento')} maxLength="50" required /></label><label>Número de Habitaciones *<input {...field('cuartos')} type="number" min="1" max="999" required /></label><label>Número de camas que pueden utilizar los huéspedes *<input {...field('pisos')} type="number" min="1" max="99" required /></label></div></FormSection>
+    <FormSection icon="🏠" title="Hospedaje mediante Plataformas Digitales"><div className="general-grid"><label>Tipo de Alojamiento *<SearchableSelect {...field('categoria')} required><option value="">Elegir opción…</option><option value="1">Alojamiento completo</option><option value="2">Habitación privada</option><option value="3">Habitación compartida</option></SearchableSelect></label><label>Alojamiento que se ofrece *<input {...field('establecimiento')} maxLength="50" required /></label><label>Número de Habitaciones *<input {...field('cuartos')} type="number" min="1" max="999" required /></label><label>Número de camas que pueden utilizar los huéspedes *<input {...field('pisos')} type="number" min="1" max="99" required /></label></div></FormSection>
     <FormSection icon="📱" title="Plataformas Digitales"><div className="lodging-options">{DIGITAL_PLATFORMS.map(checkbox)}</div><div className="general-grid"><label className="wide">Otra, ¿Cuál?<input {...field('otradigital')} maxLength="50" /></label></div></FormSection>
     <FormSection icon="🛏️" title="Servicios en las Habitaciones"><div className="lodging-options">{DIGITAL_ROOM_SERVICES.map(checkbox)}</div></FormSection>
     <FormSection icon="🏨" title="Servicios Comunes"><div className="lodging-options">{DIGITAL_COMMON_SERVICES.map(checkbox)}</div></FormSection>
     <FormSection icon="🏅" title="Certificaciones"><div className="lodging-options">{DIGITAL_CERTIFICATIONS.map(checkbox)}</div><div className="general-grid"><label className="wide">Otra, ¿Cuál?<input {...field('otracertificacion')} maxLength="50" /></label></div></FormSection>
-    <FormSection icon="🚗" title="Estacionamiento y Seguridad"><div className="general-grid"><label>Número de Cajones *<input {...field('nocajon')} type="number" min="0" max="9999" required /></label><label>Tipo de Estacionamiento *<select {...field('tipocajon')} required><option value="">Elegir opción…</option><option value="Interno">Interno</option><option value="Externo">Externo</option></select></label><label>¿Cuenta con seguro de responsabilidad? *<select {...field('seguro')} required><option value="">Elegir opción…</option><option value="0">No</option><option value="1">Sí</option></select></label>{Number(data.seguro) === 1 && <label>¿Cuál aseguradora? *<input {...field('aseguradora')} maxLength="50" required /></label>}<label>¿Cuenta con unidades y espacios para paraderos? *<select {...field('unidad')} required><option value="">Elegir opción…</option><option value="0">No</option><option value="1">Sí</option></select></label></div></FormSection>
+    <FormSection icon="🚗" title="Estacionamiento y Seguridad"><div className="general-grid"><label>Número de Cajones *<input {...field('nocajon')} type="number" min="0" max="9999" required /></label><label>Tipo de Estacionamiento *<SearchableSelect {...field('tipocajon')} required><option value="">Elegir opción…</option><option value="Interno">Interno</option><option value="Externo">Externo</option></SearchableSelect></label><label>¿Cuenta con seguro de responsabilidad? *<SearchableSelect {...field('seguro')} required><option value="">Elegir opción…</option><option value="0">No</option><option value="1">Sí</option></SearchableSelect></label>{Number(data.seguro) === 1 && <label>¿Cuál aseguradora? *<input {...field('aseguradora')} maxLength="50" required /></label>}<label>¿Cuenta con unidades y espacios para paraderos? *<SearchableSelect {...field('unidad')} required><option value="">Elegir opción…</option><option value="0">No</option><option value="1">Sí</option></SearchableSelect></label></div></FormSection>
     {message && <p className="general-message" role="status">{message}</p>}
     <button className="save-general" type="button" disabled={saving} onClick={(event) => save(event.currentTarget.form)}>{saving ? 'Guardando hospedaje digital…' : 'Guardar y continuar'} <span>→</span></button>
   </div>
@@ -1940,8 +2044,8 @@ function MapPanel() {
     <div className="map-header"><div><span className="eyebrow map-eyebrow">Explora la red</span><h2>Una entrada más clara, actual y poderosa para el RET.</h2></div><div className="map-header-tools"><div className="citizen-tools">
       <button type="button" onClick={() => showCitizenResource('Manual de usuario')}>Manual de usuario</button><button type="button" onClick={() => showCitizenResource('Preguntas frecuentes')}>Preguntas frecuentes</button></div><div className="citizen-search-trigger"><span>Consulta Ciudadana</span><button className="advanced-search-button" type="button" aria-expanded={filtersOpen} aria-controls="citizen-advanced-search" onClick={() => setFiltersOpen((current) => !current)}>Búsqueda avanzada <span aria-hidden="true">{filtersOpen ? '−' : '+'}</span></button></div></div></div>
     {filtersOpen && <form id="citizen-advanced-search" className="advanced-search-panel" onSubmit={applyFilters}>
-      <label><span>Giro turístico</span><select value={pendingFilters.giro} onChange={(event) => setPendingFilters((current) => ({ ...current, giro: event.target.value }))}>{giros.length === 0 && <option value="1">🏨 01. Hospedaje</option>}{giros.map((item) => <option key={item.id_giro} value={item.id_giro}>{GIRO_ICONS[item.id_giro] || '📍'} {cleanCatalogText(item.giro)}</option>)}</select></label>
-      <label><span>Municipio</span><select value={pendingFilters.municipio} onChange={(event) => setPendingFilters((current) => ({ ...current, municipio: event.target.value }))}><option value="">Todos los municipios</option>{municipios.map((item) => <option key={item.id_municipio} value={item.id_municipio}>{item.municipio}</option>)}</select></label>
+      <label><span>Giro turístico</span><SearchableSelect value={pendingFilters.giro} onChange={(event) => setPendingFilters((current) => ({ ...current, giro: event.target.value }))}>{giros.length === 0 && <option value="1">🏨 01. Hospedaje</option>}{giros.map((item) => <option key={item.id_giro} value={item.id_giro}>{GIRO_ICONS[item.id_giro] || '📍'} {cleanCatalogText(item.giro)}</option>)}</SearchableSelect></label>
+      <label><span>Municipio</span><SearchableSelect value={pendingFilters.municipio} onChange={(event) => setPendingFilters((current) => ({ ...current, municipio: event.target.value }))}><option value="">Todos los municipios</option>{municipios.map((item) => <option key={item.id_municipio} value={item.id_municipio}>{item.municipio}</option>)}</SearchableSelect></label>
       <label><span>Buscar establecimiento</span><input type="search" value={pendingFilters.busqueda} maxLength="100" placeholder="Nombre o descripción…" onChange={(event) => setPendingFilters((current) => ({ ...current, busqueda: event.target.value }))} /></label>
       <div className="advanced-search-actions"><button type="button" onClick={clearFilters}>Limpiar</button><button type="submit">Aplicar filtros <span aria-hidden="true">→</span></button></div>
     </form>}

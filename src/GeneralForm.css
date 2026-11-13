@@ -18,9 +18,17 @@
 .cert-option input { width: 15px; height: 15px; margin: 0; accent-color: #18724b; }
 .description-field textarea { min-height: 105px; padding: 12px; resize: vertical; }
 .map-help { margin: -5px 0 0; color: #68776f; font-size: 11px; }
+.location-assistant { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 14px 16px; border: 1px solid #cfe1e8; border-radius: 12px; background: #f2fafc; }
+.location-assistant > div { display: grid; gap: 4px; }
+.location-assistant strong { color: #0b4a86; font-size: 12px; }
+.location-assistant p { max-width: 540px; margin: 0; color: #60757e; font-size: 10px; line-height: 1.5; }
+.location-assistant button { flex: 0 0 auto; min-height: 42px; padding: 0 16px; border: 0; border-radius: 10px; background: linear-gradient(110deg, #00abc8, #0878b9); color: #fff; font: 800 11px inherit; cursor: pointer; box-shadow: 0 8px 18px #0878b927; }
+.location-assistant button:disabled { opacity: .65; cursor: wait; }
 .form-map { height: 310px; overflow: hidden; border: 1px solid #cfd9d2; border-radius: 14px; }
 .form-map .leaflet-container { width: 100%; height: 100%; }
 .coordinate-row { display: flex; gap: 15px; color: #718078; font: 11px ui-monospace, Consolas, monospace; }
+.location-message { margin: -5px 0 0; padding: 9px 11px; border-radius: 9px; background: #edf7f3; color: #35634d; font-size: 10px; line-height: 1.45; }
+.location-message.loading { background: #eef6fa; color: #28627c; }
 .general-message { margin: 0; padding: 12px 15px; border-radius: 10px; background: #eef5f0; color: #346149; font-size: 12px; text-align: center; }
 .save-general { display: flex; align-items: center; justify-content: center; gap: 13px; min-height: 52px; border: 0; border-radius: 11px; background: #f26a21; color: #fff; font: 750 13px inherit; cursor: pointer; box-shadow: 0 10px 24px #f26a2130; }
 .save-general:hover { background: #dc5917; }
@@ -30,4 +38,4 @@
 .legal-declarations input { flex: 0 0 auto; width: 17px; height: 17px; margin-top: 1px; accent-color: #176d48; }
 .legal-declarations b { color: #d33542; }
 .legal-declarations label:has(input:checked) { border-color: #69a486; background: #f0f8f3; }
-@media (max-width: 650px) { .general-grid, .cert-grid { grid-template-columns: 1fr; } .general-grid .wide { grid-column: 1; } .form-map { height: 260px; } .coordinate-row { flex-direction: column; gap: 3px; } }
+@media (max-width: 650px) { .general-grid, .cert-grid { grid-template-columns: 1fr; } .general-grid .wide { grid-column: 1; } .location-assistant { align-items: stretch; flex-direction: column; } .location-assistant button { width: 100%; } .form-map { height: 260px; } .coordinate-row { flex-direction: column; gap: 3px; } }
