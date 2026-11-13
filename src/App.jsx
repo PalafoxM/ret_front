@@ -28,6 +28,8 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY || '6LcEdectAAAAALktcjOF5fQ43mCN3ejx22DdMz9e'
 const RECAPTCHA_LOGIN_ACTION = 'LOGIN'
 const RECAPTCHA_SESSION_KEY = 'ret_captcha_required_until'
+const USER_LOGIN_MEMORY_KEY = 'ret_login_identifier'
+const ADMIN_LOGIN_MEMORY_KEY = 'ret_admin_login_identifier'
 let recaptchaScriptRequest = null
 const STATUS_MESSAGES = {
   400: 'Revisa la información enviada.',
@@ -75,6 +77,28 @@ function readCookie(name) {
 function readCsrfToken() {
   const metaToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
   return metaToken || readCookie('ret_csrf')
+}
+
+function readRememberedIdentifier(key) {
+  try { return window.localStorage.getItem(key) || '' } catch { return '' }
+}
+
+function updateRememberedIdentifier(key, value, remember) {
+  try {
+    if (remember) window.localStorage.setItem(key, value)
+    else window.localStorage.removeItem(key)
+  } catch { /* El almacenamiento puede estar deshabilitado por el navegador. */ }
+}
+
+async function storeBrowserCredential(identifier, password, displayName) {
+  if (!identifier || !password || !window.PasswordCredential || !navigator.credentials?.store) return
+  try {
+    await navigator.credentials.store(new window.PasswordCredential({
+      id: identifier,
+      password,
+      name: displayName || identifier,
+    }))
+  } catch { /* El gestor de contraseñas es opcional y depende del navegador. */ }
 }
 
 let csrfRequest = null
@@ -271,6 +295,8 @@ function RegistrationModal({ onClose, accountEmail = '', onRegistered }) {
 }
 
 function LoginPanel({ onLogin, onAdminLogin }) {
+  const rememberedUser = readRememberedIdentifier(USER_LOGIN_MEMORY_KEY)
+  const rememberedAdmin = readRememberedIdentifier(ADMIN_LOGIN_MEMORY_KEY)
   const [message, setMessage] = useState('')
   const [showRegistration, setShowRegistration] = useState(false)
   const [captchaRequired, setCaptchaRequired] = useState(() => Number(sessionStorage.getItem(RECAPTCHA_SESSION_KEY) || 0) > Date.now())
@@ -324,15 +350,18 @@ function LoginPanel({ onLogin, onAdminLogin }) {
     event.preventDefault()
     setMessage('')
     const formData = new FormData(event.currentTarget)
+    const clave = String(formData.get('clave') || '').trim().toUpperCase()
+    const password = String(formData.get('password') || '')
+    const remember = formData.has('remember')
     try {
       const recaptchaToken = captchaRequired ? await createLoginRecaptchaToken() : ''
       const response = await apiFetch('/api/auth/login', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'X-CSRF-Token': readCsrfToken() },
         body: JSON.stringify({
-          clave: formData.get('clave'),
-          password: formData.get('password'),
-          remember: formData.has('remember'),
+          clave,
+          password,
+          remember,
           recaptcha_token: recaptchaToken,
         }),
       })
@@ -340,6 +369,8 @@ function LoginPanel({ onLogin, onAdminLogin }) {
       if (!response.ok) throw new Error()
       sessionStorage.removeItem(RECAPTCHA_SESSION_KEY)
       setCaptchaRequired(false)
+      updateRememberedIdentifier(USER_LOGIN_MEMORY_KEY, clave, remember)
+      if (remember) await storeBrowserCredential(clave, password, result.data?.nombre_comercial || clave)
       onLogin(result.data)
     } catch (error) {
       if (error?.captchaRequired) {
@@ -353,13 +384,20 @@ function LoginPanel({ onLogin, onAdminLogin }) {
   const adminLogin = async () => {
     const result = await Swal.fire({
       title: 'Acceso administrativo',
-      html: '<input id="admin-email" class="swal2-input" type="email" autocomplete="username" placeholder="Correo electrónico"><input id="admin-password" class="swal2-input" type="password" autocomplete="current-password" placeholder="Contraseña"><label class="admin-remember-option"><input id="admin-remember" type="checkbox"><span>Recordarme en este equipo</span></label>',
+      html: '<form id="admin-login-form" autocomplete="on"><input id="admin-email" name="username" class="swal2-input" type="email" autocomplete="username" placeholder="Correo electrónico"><input id="admin-password" name="password" class="swal2-input" type="password" autocomplete="current-password" placeholder="Contraseña"><label class="admin-remember-option"><input id="admin-remember" name="remember" type="checkbox"><span>Recordar mis datos de acceso</span></label></form>',
       showCancelButton: true,
       showLoaderOnConfirm: true,
       confirmButtonText: 'Ingresar',
       cancelButtonText: 'Cancelar',
       confirmButtonColor: '#0878b9',
       allowOutsideClick: () => !Swal.isLoading(),
+      didOpen: () => {
+        const popup = Swal.getPopup()
+        const emailInput = popup?.querySelector('#admin-email')
+        const rememberInput = popup?.querySelector('#admin-remember')
+        if (emailInput) emailInput.value = rememberedAdmin
+        if (rememberInput) rememberInput.checked = Boolean(rememberedAdmin)
+      },
       preConfirm: async () => {
         const email = Swal.getPopup()?.querySelector('#admin-email')?.value.trim().toLowerCase() || ''
         const password = Swal.getPopup()?.querySelector('#admin-password')?.value || ''
@@ -367,7 +405,10 @@ function LoginPanel({ onLogin, onAdminLogin }) {
         if (!email || !password) { Swal.showValidationMessage('Captura correo y contraseña'); return false }
         try {
           const response = await apiFetch('/api/admin/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, password, remember }) })
-          return (await response.json()).data
+          const session = (await response.json()).data
+          updateRememberedIdentifier(ADMIN_LOGIN_MEMORY_KEY, email, remember)
+          if (remember) await storeBrowserCredential(email, password, session?.name || email)
+          return session
         } catch (error) {
           Swal.showValidationMessage(safeErrorMessage(error, 'No fue posible iniciar la sesión administrativa.'))
           return false
@@ -394,12 +435,12 @@ function LoginPanel({ onLogin, onAdminLogin }) {
       <span className="eyebrow">Portal de acceso</span>
       <h1>Registro Estatal de Turismo de Guanajuato</h1>
       <p className="intro">Ingresa tus credenciales</p>
-      <form onSubmit={submit}>
+      <form onSubmit={submit} autoComplete="on">
         <label htmlFor="clave">Clave RET</label>
-        <div className="field"><span aria-hidden="true">🔑</span><input id="clave" name="clave" type="text" placeholder="RET01010023" autoComplete="username" minLength="9" maxLength="17" required /></div>
+        <div className="field"><span aria-hidden="true">🔑</span><input id="clave" name="clave" type="text" placeholder="RET01010023" autoComplete="username" defaultValue={rememberedUser} minLength="9" maxLength="17" required /></div>
         <div className="password-row"><label htmlFor="password">Contraseña</label><button className="text-button" type="button" onClick={recoverPassword}>Olvidé mi contraseña</button></div>
         <div className="field"><span aria-hidden="true">◇</span><input id="password" name="password" type="password" placeholder="Tu contraseña" autoComplete="current-password" required /></div>
-        <label className="remember"><input name="remember" type="checkbox" /><span>Recordarme en este equipo</span></label>
+        <label className="remember"><input name="remember" type="checkbox" defaultChecked={Boolean(rememberedUser)} /><span>Recordar mis datos de acceso</span></label>
         <button className="primary-button" type="submit">Iniciar sesión <span aria-hidden="true">→</span></button>
         {captchaRequired && <small className="recaptcha-notice">Este acceso está protegido por reCAPTCHA Enterprise.</small>}
         <button className="secondary-button" type="button" onClick={() => setShowRegistration(true)}>Registrarse <span aria-hidden="true">+</span></button>
