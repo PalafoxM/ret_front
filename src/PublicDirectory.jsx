@@ -8,9 +8,9 @@ import img8 from './assets/IMG8.jpg'
 import img10 from './assets/IMG10.jpg'
 import img11 from './assets/IMG11.JPG'
 import img12 from './assets/IMG12.JPG'
-import img13 from './assets/IMG13.JPG'
+//import img13 from './assets/IMG13.JPG'
 
-const DIRECTORY_BACKGROUNDS = [img4, img5, img6, img8, img10, img11, img12, img13]
+const DIRECTORY_BACKGROUNDS = [img4, img5, img6, img8, img10, img11, img12]
 const DIRECTORY_BACKGROUND_KEY = 'ret_directory_background'
 
 function chooseDirectoryBackground() {
