@@ -88,7 +88,7 @@ export default function PublicDirectory({ apiFetch, cleanText, giroIcons, onShow
         if (error.name !== 'AbortError') setCatalogStatus((current) => ({ ...current, [key]: 'error' }))
       }
     }
-    loadCatalog('/api/giros', 'giros', setGiros)
+    loadCatalog('/api/giros?directorio=1', 'giros', setGiros)
     loadCatalog('/api/municipios', 'municipios', setMunicipios)
     return () => controller.abort()
   }, [apiFetch])
