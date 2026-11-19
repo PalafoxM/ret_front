@@ -1,7 +1,7 @@
 import { Children, useCallback, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Select from 'react-select'
-import { MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet'
+import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from 'react-leaflet'
 import { divIcon } from 'leaflet'
 import Swal from 'sweetalert2'
 import 'sweetalert2/dist/sweetalert2.min.css'
@@ -10,6 +10,8 @@ import 'leaflet/dist/leaflet.css'
 import privacyNotice from './assets/aviso_de_privacidad_integral_ret.pdf'
 import logoRet from './assets/logo_ret_altb.png'
 import logogto from './assets/ggt-2006.png'
+import PublicDirectory from './PublicDirectory'
+import './PublicDirectory.css'
 import './App.css'
 import './Wizard.css'
 import './GeneralForm.css'
@@ -23,7 +25,6 @@ import './Theme.css'
 import './Logo.css'
 import './Admin.css'
 
-const DEFAULT_CENTER = [23.6345, -102.5528]
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY || '6LcEdectAAAAALktcjOF5fQ43mCN3ejx22DdMz9e'
 const RECAPTCHA_LOGIN_ACTION = 'LOGIN'
@@ -180,16 +181,6 @@ const LOCATION_ICONS = Object.fromEntries(
     popupAnchor: [0, -40],
   })]),
 )
-
-function FitMap({ locations }) {
-  const map = useMap()
-  useEffect(() => {
-    if (!locations.length) return
-    if (locations.length === 1) map.setView([locations[0].latitud, locations[0].longitud], 14)
-    else map.fitBounds(locations.map(({ latitud, longitud }) => [latitud, longitud]), { padding: [60, 60], maxZoom: 15 })
-  }, [locations, map])
-  return null
-}
 
 function RegistrationModal({ onClose, accountEmail = '', onRegistered }) {
   const usesExistingAccount = Boolean(accountEmail)
@@ -2042,55 +2033,6 @@ function AuthenticatedWizard({ user, onLogout, onUserChange }) {
 }
 
 function MapPanel() {
-  const [locations, setLocations] = useState([])
-  const [giros, setGiros] = useState([])
-  const [municipios, setMunicipios] = useState([])
-  const [filtersOpen, setFiltersOpen] = useState(false)
-  const [filters, setFilters] = useState({ giro: '1', municipio: '', busqueda: '' })
-  const [pendingFilters, setPendingFilters] = useState({ giro: '1', municipio: '', busqueda: '' })
-  const [status, setStatus] = useState('loading')
-  useEffect(() => {
-    const controller = new AbortController()
-    Promise.all([
-      apiFetch('/api/giros', { signal: controller.signal }).then((response) => { if (!response.ok) throw new Error(); return response.json() }),
-      apiFetch('/api/municipios', { signal: controller.signal }).then((response) => { if (!response.ok) throw new Error(); return response.json() }),
-    ])
-      .then(([girosResponse, municipiosResponse]) => {
-        setGiros(Array.isArray(girosResponse.data) ? girosResponse.data : [])
-        setMunicipios(Array.isArray(municipiosResponse.data) ? municipiosResponse.data : [])
-      })
-      .catch(() => {})
-    return () => controller.abort()
-  }, [])
-  useEffect(() => {
-    const controller = new AbortController()
-    const query = new URLSearchParams({ giro: filters.giro })
-    if (filters.municipio) query.set('municipio', filters.municipio)
-    if (filters.busqueda) query.set('busqueda', filters.busqueda)
-    apiFetch(`/api/establecimientos?${query.toString()}`, {
-      signal: controller.signal,
-    })
-      .then((response) => { if (!response.ok) throw new Error(); return response.json() })
-      .then(({ data }) => { setLocations(Array.isArray(data) ? data : []); setStatus('ready') })
-      .catch((error) => { if (error.name !== 'AbortError') setStatus('error') })
-    return () => controller.abort()
-  }, [filters])
-
-  const applyFilters = (event) => {
-    event.preventDefault()
-    setStatus('loading')
-    setLocations([])
-    setFilters({ ...pendingFilters, busqueda: pendingFilters.busqueda.trim() })
-  }
-
-  const clearFilters = () => {
-    const initialFilters = { giro: '1', municipio: '', busqueda: '' }
-    setPendingFilters(initialFilters)
-    setStatus('loading')
-    setLocations([])
-    setFilters(initialFilters)
-  }
-
   const showCitizenResource = (resource) => Swal.fire({
     icon: 'info',
     title: resource,
@@ -2098,25 +2040,7 @@ function MapPanel() {
     confirmButtonText: 'Entendido',
     confirmButtonColor: '#0878b9',
   })
-
-  return <main className="map-panel">
-    <div className="map-header"><div><span className="eyebrow map-eyebrow">Explora la red</span><h2>Una entrada más clara, actual y poderosa para el RET.</h2></div><div className="map-header-tools"><div className="citizen-tools">
-      <button type="button" onClick={() => showCitizenResource('Manual de usuario')}>Manual de usuario</button><button type="button" onClick={() => showCitizenResource('Preguntas frecuentes')}>Preguntas frecuentes</button></div><div className="citizen-search-trigger"><span>Consulta Ciudadana</span><button className="advanced-search-button" type="button" aria-expanded={filtersOpen} aria-controls="citizen-advanced-search" onClick={() => setFiltersOpen((current) => !current)}>Búsqueda avanzada <span aria-hidden="true">{filtersOpen ? '−' : '+'}</span></button></div></div></div>
-    {filtersOpen && <form id="citizen-advanced-search" className="advanced-search-panel" onSubmit={applyFilters}>
-      <label><span>Giro turístico</span><SearchableSelect value={pendingFilters.giro} onChange={(event) => setPendingFilters((current) => ({ ...current, giro: event.target.value }))}>{giros.length === 0 && <option value="1">🏨 01. Hospedaje</option>}{giros.map((item) => <option key={item.id_giro} value={item.id_giro}>{GIRO_ICONS[item.id_giro] || '📍'} {cleanCatalogText(item.giro)}</option>)}</SearchableSelect></label>
-      <label><span>Municipio</span><SearchableSelect value={pendingFilters.municipio} onChange={(event) => setPendingFilters((current) => ({ ...current, municipio: event.target.value }))}><option value="">Todos los municipios</option>{municipios.map((item) => <option key={item.id_municipio} value={item.id_municipio}>{item.municipio}</option>)}</SearchableSelect></label>
-      <label><span>Buscar establecimiento</span><input type="search" value={pendingFilters.busqueda} maxLength="100" placeholder="Nombre o descripción…" onChange={(event) => setPendingFilters((current) => ({ ...current, busqueda: event.target.value }))} /></label>
-      <div className="advanced-search-actions"><button type="button" onClick={clearFilters}>Limpiar</button><button type="submit">Aplicar filtros <span aria-hidden="true">→</span></button></div>
-    </form>}
-    <div className="map-shell">
-      <MapContainer center={DEFAULT_CENTER} zoom={5} className="map">
-        <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-        <FitMap locations={locations} />
-        {locations.map((item, index) => <Marker key={`${item.nombre_comercial}-${item.latitud}-${item.longitud}-${index}`} position={[item.latitud, item.longitud]} icon={LOCATION_ICONS[filters.giro] || LOCATION_ICONS[1]}><Popup><strong>{GIRO_ICONS[filters.giro]} {item.nombre_comercial || 'Sin nombre'}</strong><div className="map-popup-contact"><span><b>Teléfono comercial:</b> {item.telefono_comercial ? <a href={`tel:${String(item.telefono_comercial).replace(/[^\d+]/g, '')}`}>{item.telefono_comercial}</a> : 'No disponible'}</span>{item.telefono2 && <span><b>Teléfono alternativo:</b> <a href={`tel:${String(item.telefono2).replace(/[^\d+]/g, '')}`}>{item.telefono2}</a></span>}<span><b>Dirección:</b> {item.direccion || 'No disponible'}</span></div><p>{item.descripcion || 'Sin descripción disponible'}</p></Popup></Marker>)}
-      </MapContainer>
-      <div className={`map-status ${status}`}><span className="pulse-dot" />{status === 'loading' && 'Cargando ubicaciones…'}{status === 'ready' && `${locations.length} ${locations.length === 1 ? 'ubicación' : 'ubicaciones'}`}{status === 'error' && 'No se pudo conectar con el servidor'}</div>
-    </div>
-  </main>
+  return <PublicDirectory apiFetch={apiFetch} cleanText={cleanCatalogText} giroIcons={GIRO_ICONS} onShowResource={showCitizenResource} />
 }
 
 function AdminDashboard({ admin, onLogout }) {
