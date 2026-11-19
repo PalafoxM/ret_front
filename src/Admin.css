@@ -67,6 +67,10 @@
 .admin-status.renovacion { background: #fff5db; color: #936000; }
 .admin-row-actions { display: flex; gap: 7px; }
 .admin-edit-enabled { display: inline-flex; align-items: center; white-space: nowrap; padding: .3rem .55rem; border: 1px solid #8bd4ac; border-radius: .4rem; background: #e9f8ef; color: #167442; font-size: .78rem; font-weight: 700; }
+.admin-expediente-nav { position: sticky; top: 12px; z-index: 5; display: flex; flex-wrap: wrap; gap: 10px; width: fit-content; margin: 0 0 18px; padding: 8px; border: 1px solid #c9dce6; border-radius: 14px; background: rgba(255, 255, 255, .96); box-shadow: 0 8px 24px rgba(0, 71, 115, .1); }
+.admin-expediente-nav a { padding: 9px 14px; border-radius: 9px; color: var(--ret-blue); font-size: .86rem; font-weight: 700; text-decoration: none; }
+.admin-expediente-nav a:hover, .admin-expediente-nav a:focus-visible { background: #e7f6fa; outline: none; }
+.admin-file-section { scroll-margin-top: 90px; }
 .admin-row-actions .btn { white-space: nowrap; }
 .admin-row-actions .btn-primary { border-color: var(--ret-blue); background: var(--ret-blue); }
 .admin-row-actions .btn-outline-primary { border-color: var(--ret-blue); color: var(--ret-blue); }
