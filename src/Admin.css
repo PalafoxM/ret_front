@@ -66,6 +66,7 @@
 .admin-status.vencido { background: #fff3cd; color: #856404; }
 .admin-status.renovacion { background: #fff5db; color: #936000; }
 .admin-row-actions { display: flex; gap: 7px; }
+.admin-edit-enabled { display: inline-flex; align-items: center; white-space: nowrap; padding: .3rem .55rem; border: 1px solid #8bd4ac; border-radius: .4rem; background: #e9f8ef; color: #167442; font-size: .78rem; font-weight: 700; }
 .admin-row-actions .btn { white-space: nowrap; }
 .admin-row-actions .btn-primary { border-color: var(--ret-blue); background: var(--ret-blue); }
 .admin-row-actions .btn-outline-primary { border-color: var(--ret-blue); color: var(--ret-blue); }

@@ -1969,6 +1969,7 @@ function AuthenticatedWizard({ user, onLogout, onUserChange }) {
   const [step, setStep] = useState(0)
   const [showRecords, setShowRecords] = useState(false)
   const [showNewRegistration, setShowNewRegistration] = useState(false)
+  const canEdit = Number(user.aprobado) !== 1 || Number(user.edicion) === 1
   const giroStepNames = { 2: 'Formulario de Agencia de Viajes', 3: 'Formulario de Guía de Turistas', 4: 'Formulario de Operador de Eventos', 5: 'Formulario de Alimentos y Bebidas', 6: 'Formulario de Campo de Golf', 7: 'Formulario de Arte Popular y Productos', 9: 'Formulario de Arrendamiento de Autos', 10: 'Formulario de Espacios Turísticos', 11: 'Formulario de Operador Turístico', 12: 'Formulario de Balnearios y Parques Acuáticos', 13: 'Formulario de Capacitación Turística', 14: 'Formulario de Deporte y Recreación', 15: 'Formulario de Centro de Bienestar / SPA', 16: 'Formulario de Recintos y Salones para Eventos', 17: 'Formulario de Hospedaje mediante Plataformas Digitales' }
   const skipsGiroForm = Number(user.giro) === 8
   const wizardSteps = skipsGiroForm
@@ -1993,7 +1994,7 @@ function AuthenticatedWizard({ user, onLogout, onUserChange }) {
       <div className="wizard-brand"><img src={logoRet} alt="RET" /><img src={logogto} alt="Gobierno de Guanajuato" /></div>
       <div className="wizard-header-actions"><div className="records-shortcuts"><button className="new-record-button" type="button" onClick={() => setShowNewRegistration(true)}>＋ Nuevo registro</button><button className="my-records-button" type="button" onClick={() => setShowRecords(true)}>Mis registros</button></div><div className="wizard-user"><div><strong>{user.nombre_comercial || user.clave}</strong><span>{user.clave}</span></div><button type="button" onClick={onLogout}>Cerrar sesión</button></div></div>
     </header>
-    {showRecords ? <MyRecordsView onBack={() => setShowRecords(false)} onSelect={(selected) => { setShowRecords(false); setStep(0); onUserChange(selected) }} /> : <div className="wizard-layout">
+    {showRecords ? <MyRecordsView onBack={() => setShowRecords(false)} onSelect={(selected) => { setShowRecords(false); setStep(0); onUserChange(selected) }} /> : canEdit ? <div className="wizard-layout">
       <aside className="wizard-sidebar">
         <span className="eyebrow">Registro del establecimiento</span>
         <h1>Completa tu información</h1>
@@ -2027,7 +2028,13 @@ function AuthenticatedWizard({ user, onLogout, onUserChange }) {
           {step === experienceStep && <ExperienciaStep onBack={() => setStep(skipsGiroForm ? 3 : 4)} onComplete={() => setShowRecords(true)} />}
         </form>
       </section>
-    </div>}
+    </div> : <section className="editing-locked" aria-labelledby="editing-locked-title">
+      <span className="editing-locked-icon" aria-hidden="true">🔒</span>
+      <span className="eyebrow">Registro protegido</span>
+      <h1 id="editing-locked-title">Edición no habilitada</h1>
+      <p>Este registro ya fue aprobado. Para proteger su información, un administrador debe habilitar la edición antes de que puedas modificar los formularios.</p>
+      <button className="my-records-button" type="button" onClick={() => setShowRecords(true)}>Ir a Mis registros</button>
+    </section>}
     {showNewRegistration && <RegistrationModal accountEmail={user.email} onClose={() => setShowNewRegistration(false)} onRegistered={continueWithNewRegistration} />}
   </main>
 }
@@ -2120,6 +2127,37 @@ function AdminDashboard({ admin, onLogout }) {
       Swal.fire({ icon: 'error', title: 'No fue posible activar', text: safeErrorMessage(error, 'No fue posible activar la renovación.'), confirmButtonText: 'Entendido' })
     }
   }
+  const activateEditing = async (item) => {
+    const confirmation = await Swal.fire({
+      icon: 'question',
+      title: '¿Activar edición de información?',
+      text: '¿Estás seguro de que deseas habilitar la edición de información para este usuario RET? Al confirmar, el usuario podrá modificar nuevamente sus datos registrados en el sistema.',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, activar edición',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#0878b9',
+    })
+    if (!confirmation.isConfirmed) return
+    Swal.fire({ title: 'Activando edición…', allowOutsideClick: false, didOpen: () => Swal.showLoading() })
+    try {
+      const response = await apiFetch(`/api/admin/tramites/${encodeURIComponent(item.clave)}/activar-edicion`, { method: 'POST' })
+      const result = await response.json()
+      if (!response.ok || !result.success) throw new Error(result.message || 'No fue posible activar la edición.')
+      setRecords((current) => ({
+        ...current,
+        rows: current.rows.map((row) => row.clave === item.clave ? { ...row, edicion: 1 } : row),
+      }))
+      await Swal.fire({
+        icon: 'success',
+        title: 'Edición habilitada',
+        text: 'Edición habilitada correctamente. El usuario RET ya puede modificar su información.',
+        confirmButtonText: 'Entendido',
+        confirmButtonColor: '#0878b9',
+      })
+    } catch (error) {
+      Swal.fire({ icon: 'error', title: 'No fue posible activar la edición', text: safeErrorMessage(error, 'No fue posible activar la edición.'), confirmButtonText: 'Entendido' })
+    }
+  }
   const metrics = dashboard?.metrics || {}
   const formatNumber = (number) => Number(number || 0).toLocaleString('es-MX')
   const maxGiro = Math.max(...(dashboard?.byGiro || []).map((item) => Number(item.total)), 1)
@@ -2152,7 +2190,7 @@ function AdminDashboard({ admin, onLogout }) {
         <section className="admin-panel admin-shortcuts"><header><span className="eyebrow">Navegación</span><h2>Accesos rápidos</h2></header><div>{quickLinks.map(([status, label, total]) => <button type="button" className={statusFilter === status ? 'selected' : ''} onClick={() => { setStatusFilter(statusFilter === status ? '' : status); setPage(1); document.getElementById('admin-records')?.scrollIntoView({ behavior: 'smooth' }) }} key={status}><span>{label}</span><strong>{formatNumber(total)}</strong><b aria-hidden="true">→</b></button>)}</div></section>
         <section className="admin-recent" id="admin-records"><header><div><span className="eyebrow">Trámites visibles</span><h2>{statusFilter ? `Registros: ${statusFilter}` : 'Listado de trámites'}</h2></div>{statusFilter && <button className="clear-admin-filter" type="button" onClick={() => { setStatusFilter(''); setPage(1) }}>Ver todos</button>}</header>
           <div className="admin-table-tools"><label>Mostrar <select className="form-select form-select-sm" value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1) }}><option value="10">10</option><option value="25">25</option><option value="50">50</option></select> registros</label><label className="admin-search">Buscar:<input className="form-control form-control-sm" type="search" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} placeholder="Clave, nombre, correo…" /></label></div>
-          <div className="admin-table-wrap table-responsive"><table className="table table-striped table-hover align-middle mb-0"><thead className="table-light"><tr><th>Clave RET</th><th>Nombre comercial</th><th>Giro</th><th>Municipio</th><th>Correo</th><th>Fecha de registro</th><th>Estatus</th><th>Acciones</th></tr></thead><tbody>{tableLoading ? <tr><td colSpan="8" className="admin-empty">Cargando registros…</td></tr> : records.rows.map((item) => <tr key={item.clave}><td><button className="admin-key-button" type="button" onClick={() => setSelectedClave(item.clave)}>{item.clave || '—'}</button></td><td>{item.nombre_comercial || 'Sin nombre'}</td><td>{cleanCatalogText(item.giro) || 'Sin giro'}</td><td>{item.municipio || 'Sin municipio'}</td><td>{item.correo || '—'}</td><td>{item.fecha_registro ? new Date(item.fecha_registro).toLocaleDateString('es-MX') : '—'}</td><td><span className={`admin-status ${item.estatus?.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')}`}>{item.estatus}</span></td><td><div className="admin-row-actions"><button className={`btn btn-sm ${Number(item.s3) === 1 ? 'btn-warning' : 'btn-outline-primary'}`} type="button" onClick={() => setSelectedClave(item.clave)}>{Number(item.s3) === 1 ? 'Expediente perdido' : 'Abrir expediente'}</button>{Number(item.s3) !== 1 && item.estatus === 'Renovación' && <button className="btn btn-sm btn-primary" type="button" onClick={() => activateRenewal(item)}>Activar</button>}{Number(item.s3) !== 1 && item.estatus === 'Aprobado' && <a className="btn btn-sm btn-outline-primary" href={`/api/admin/tramites/${encodeURIComponent(item.clave)}/cedula`} target="_blank" rel="noreferrer">Ver Cédula</a>}</div></td></tr>)}{!tableLoading && records.rows.length === 0 && <tr><td colSpan="8" className="admin-empty">No se encontraron trámites.</td></tr>}</tbody></table></div>
+          <div className="admin-table-wrap table-responsive"><table className="table table-striped table-hover align-middle mb-0"><thead className="table-light"><tr><th>Clave RET</th><th>Nombre comercial</th><th>Giro</th><th>Municipio</th><th>Correo</th><th>Fecha de registro</th><th>Estatus</th><th>Acciones</th></tr></thead><tbody>{tableLoading ? <tr><td colSpan="8" className="admin-empty">Cargando registros…</td></tr> : records.rows.map((item) => <tr key={item.clave}><td><button className="admin-key-button" type="button" onClick={() => setSelectedClave(item.clave)}>{item.clave || '—'}</button></td><td>{item.nombre_comercial || 'Sin nombre'}</td><td>{cleanCatalogText(item.giro) || 'Sin giro'}</td><td>{item.municipio || 'Sin municipio'}</td><td>{item.correo || '—'}</td><td>{item.fecha_registro ? new Date(item.fecha_registro).toLocaleDateString('es-MX') : '—'}</td><td><span className={`admin-status ${item.estatus?.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')}`}>{item.estatus}</span></td><td><div className="admin-row-actions"><button className={`btn btn-sm ${Number(item.s3) === 1 ? 'btn-warning' : 'btn-outline-primary'}`} type="button" onClick={() => setSelectedClave(item.clave)}>{Number(item.s3) === 1 ? 'Expediente perdido' : 'Abrir expediente'}</button>{Number(item.edicion) === 1 ? <span className="admin-edit-enabled" title="El usuario puede modificar nuevamente su información">✎ Edición habilitada</span> : <button className="btn btn-sm btn-outline-warning" type="button" onClick={() => activateEditing(item)}>🔓 Activar edición</button>}{Number(item.s3) !== 1 && item.estatus === 'Renovación' && <button className="btn btn-sm btn-primary" type="button" onClick={() => activateRenewal(item)}>Activar</button>}{Number(item.s3) !== 1 && item.estatus === 'Aprobado' && <a className="btn btn-sm btn-outline-primary" href={`/api/admin/tramites/${encodeURIComponent(item.clave)}/cedula`} target="_blank" rel="noreferrer">Ver Cédula</a>}</div></td></tr>)}{!tableLoading && records.rows.length === 0 && <tr><td colSpan="8" className="admin-empty">No se encontraron trámites.</td></tr>}</tbody></table></div>
           <footer className="admin-table-footer"><span>Mostrando {records.total ? ((records.page - 1) * records.pageSize) + 1 : 0} a {Math.min(records.page * records.pageSize, records.total)} de {formatNumber(records.total)} registros</span><nav aria-label="Paginación de trámites"><ul className="pagination pagination-sm mb-0"><li className={`page-item ${page <= 1 ? 'disabled' : ''}`}><button className="page-link" type="button" onClick={() => setPage((current) => Math.max(1, current - 1))}>Anterior</button></li>{Array.from({ length: Math.min(5, records.pages) }, (_, index) => { const start = Math.max(1, Math.min(page - 2, records.pages - 4)); const number = start + index; return <li className={`page-item ${number === page ? 'active' : ''}`} key={number}><button className="page-link" type="button" onClick={() => setPage(number)}>{number}</button></li> })}<li className={`page-item ${page >= records.pages ? 'disabled' : ''}`}><button className="page-link" type="button" onClick={() => setPage((current) => Math.min(records.pages, current + 1))}>Siguiente</button></li></ul></nav></footer>
         </section>
       </>}

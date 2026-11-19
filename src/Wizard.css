@@ -10,6 +10,10 @@
 .wizard-user span { color: #7b877f; font-size: 11px; }
 .wizard-user button { padding: 9px 13px; border: 1px solid #d5ddd7; border-radius: 9px; background: #fff; color: #365e4b; font-size: 12px; font-weight: 700; cursor: pointer; }
 .wizard-layout { display: grid; grid-template-columns: minmax(280px, 350px) minmax(0, 850px); justify-content: center; gap: 34px; padding: 42px clamp(20px, 4vw, 60px); }
+.editing-locked { width: min(680px, calc(100% - 40px)); margin: 64px auto; padding: 48px; border: 1px solid #c9dce6; border-radius: 28px; background: rgba(255, 255, 255, .96); box-shadow: 0 20px 55px rgba(0, 71, 115, .12); text-align: center; }
+.editing-locked-icon { display: grid; place-items: center; width: 72px; height: 72px; margin: 0 auto 18px; border-radius: 22px; background: #e6f6fa; font-size: 32px; }
+.editing-locked h1 { margin: 8px 0 14px; color: #064b82; font-family: Georgia, serif; font-size: clamp(30px, 5vw, 44px); }
+.editing-locked p { max-width: 540px; margin: 0 auto 26px; color: #5f7480; line-height: 1.65; }
 .wizard-sidebar { padding: 24px 14px; }
 .wizard-sidebar h1 { margin: 0 0 14px; font-size: 37px; }
 .wizard-sidebar > p { margin: 0 0 30px; color: #6e7972; font-size: 14px; line-height: 1.6; }
