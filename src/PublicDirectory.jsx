@@ -1,16 +1,26 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet'
 import { divIcon } from 'leaflet'
+import img4 from './assets/IMG4.jpg'
+import img5 from './assets/IMG5.jpg'
+import img6 from './assets/IMG6.jpg'
+import img8 from './assets/IMG8.jpg'
+import img10 from './assets/IMG10.jpg'
+import img11 from './assets/IMG11.JPG'
+import img12 from './assets/IMG12.JPG'
+import img13 from './assets/IMG13.JPG'
 
-const CATEGORY_GROUPS = [
-  { id: 'hospedaje', label: 'Hospedaje', description: 'Hoteles y alojamientos', icon: '🏨', color: '#7257e8', giros: [1, 17] },
-  { id: 'gastronomia', label: 'Alimentos y bebidas', description: 'Restaurantes, bares y cafeterías', icon: '🍽️', color: '#dc3f45', giros: [5] },
-  { id: 'viajes', label: 'Viajes y recorridos', description: 'Agencias, guías y operadores', icon: '✈️', color: '#2672e8', giros: [2, 3, 11] },
-  { id: 'eventos', label: 'Eventos y recintos', description: 'Organización y espacios turísticos', icon: '🎪', color: '#c82dcc', giros: [4, 10, 16] },
-  { id: 'bienestar', label: 'Bienestar y recreación', description: 'Golf, balnearios, deporte y spa', icon: '🌿', color: '#169a55', giros: [6, 12, 14, 15] },
-  { id: 'cultura', label: 'Cultura y aprendizaje', description: 'Arte, sitios y capacitación', icon: '🏺', color: '#df8b20', giros: [7, 8, 13] },
-  { id: 'movilidad', label: 'Movilidad turística', description: 'Arrendamiento y transporte', icon: '🚗', color: '#087f9d', giros: [9] },
-]
+const DIRECTORY_BACKGROUNDS = [img4, img5, img6, img8, img10, img11, img12, img13]
+const DIRECTORY_BACKGROUND_KEY = 'ret_directory_background'
+
+function chooseDirectoryBackground() {
+  let previous = -1
+  try { previous = Number.parseInt(window.localStorage.getItem(DIRECTORY_BACKGROUND_KEY), 10) } catch { previous = -1 }
+  const choices = DIRECTORY_BACKGROUNDS.map((_, index) => index).filter((index) => index !== previous)
+  const index = choices[Math.floor(Math.random() * choices.length)] ?? 0
+  try { window.localStorage.setItem(DIRECTORY_BACKGROUND_KEY, String(index)) } catch { /* La imagen elegida sigue siendo válida sin almacenamiento local. */ }
+  return DIRECTORY_BACKGROUNDS[index]
+}
 
 const validCoordinate = (value) => Number.isFinite(Number(value))
 
@@ -52,66 +62,70 @@ const websiteHref = (value) => {
 
 export default function PublicDirectory({ apiFetch, cleanText, giroIcons, onShowResource }) {
   const [giros, setGiros] = useState([])
-  const [catalogStatus, setCatalogStatus] = useState('loading')
-  const [view, setView] = useState('categories')
-  const [selectedCategory, setSelectedCategory] = useState(null)
-  const [selectedGiro, setSelectedGiro] = useState(null)
+  const [municipios, setMunicipios] = useState([])
+  const [catalogStatus, setCatalogStatus] = useState({ giros: 'loading', municipios: 'loading' })
+  const [view, setView] = useState('filters')
+  const [giroId, setGiroId] = useState('')
+  const [municipioId, setMunicipioId] = useState('')
   const [selectedPlace, setSelectedPlace] = useState(null)
-  const [giroSearch, setGiroSearch] = useState('')
   const [placeSearch, setPlaceSearch] = useState('')
   const [page, setPage] = useState(1)
   const [results, setResults] = useState({ rows: [], total: 0, page: 1, pages: 1 })
   const [resultStatus, setResultStatus] = useState('idle')
   const [resultMessage, setResultMessage] = useState('')
+  const [backgroundImage] = useState(chooseDirectoryBackground)
   const panelRef = useRef(null)
 
   useEffect(() => {
     const controller = new AbortController()
-    apiFetch('/api/giros', { signal: controller.signal })
-      .then((response) => response.json())
-      .then((payload) => { setGiros(Array.isArray(payload.data) ? payload.data : []); setCatalogStatus('ready') })
-      .catch((error) => { if (error.name !== 'AbortError') setCatalogStatus('error') })
+    const loadCatalog = async (path, key, setter) => {
+      try {
+        const response = await apiFetch(path, { signal: controller.signal })
+        const payload = await response.json()
+        setter(Array.isArray(payload.data) ? payload.data : [])
+        setCatalogStatus((current) => ({ ...current, [key]: 'ready' }))
+      } catch (error) {
+        if (error.name !== 'AbortError') setCatalogStatus((current) => ({ ...current, [key]: 'error' }))
+      }
+    }
+    loadCatalog('/api/giros', 'giros', setGiros)
+    loadCatalog('/api/municipios', 'municipios', setMunicipios)
     return () => controller.abort()
   }, [apiFetch])
 
-  const categories = useMemo(() => {
-    const availableIds = new Set(giros.map((item) => Number(item.id_giro)))
-    const groupedIds = new Set(CATEGORY_GROUPS.flatMap((category) => category.giros))
-    const primary = CATEGORY_GROUPS.map((category) => ({ ...category, giros: category.giros.filter((id) => availableIds.has(id)) })).filter((category) => category.giros.length)
-    const remaining = giros.map((item) => Number(item.id_giro)).filter((id) => !groupedIds.has(id))
-    return remaining.length ? [...primary, { id: 'otros', label: 'Otros servicios', description: 'Más experiencias turísticas', icon: '✨', color: '#536b7c', giros: remaining }] : primary
-  }, [giros])
-
-  const categoryGiros = useMemo(() => {
-    if (!selectedCategory) return []
-    const allowed = new Set(selectedCategory.giros)
-    const term = giroSearch.trim().toLocaleLowerCase('es-MX')
-    return giros.filter((item) => allowed.has(Number(item.id_giro))).filter((item) => !term || `${cleanText(item.giro)} ${cleanText(item.resumen || '')}`.toLocaleLowerCase('es-MX').includes(term))
-  }, [cleanText, giroSearch, giros, selectedCategory])
+  const selectedGiro = useMemo(() => giros.find((item) => String(item.id_giro) === giroId) || null, [giroId, giros])
+  const selectedMunicipio = useMemo(() => municipios.find((item) => String(item.id_municipio) === municipioId) || null, [municipioId, municipios])
+  const hasFilters = Boolean(giroId || municipioId)
 
   useEffect(() => {
-    if (!selectedGiro || view !== 'results') return undefined
+    if (!hasFilters) return undefined
     const controller = new AbortController()
     const timer = window.setTimeout(() => {
       setResultStatus('loading')
       setResultMessage('')
-      const query = new URLSearchParams({ giro: String(selectedGiro.id_giro), page: String(page), pageSize: '12' })
+      const query = new URLSearchParams({ page: String(page), pageSize: '12' })
+      if (giroId) query.set('giro', giroId)
+      if (municipioId) query.set('municipio', municipioId)
       if (placeSearch.trim()) query.set('busqueda', placeSearch.trim())
       apiFetch(`/api/directorio/establecimientos?${query}`, { signal: controller.signal })
         .then((response) => response.json())
-        .then((payload) => { setResults(payload.data || { rows: [], total: 0, page: 1, pages: 1 }); setResultStatus('ready') })
+        .then((payload) => {
+          setResults(payload.data || { rows: [], total: 0, page: 1, pages: 1 })
+          setResultStatus('ready')
+          setView('results')
+        })
         .catch((error) => { if (error.name !== 'AbortError') { setResultStatus('error'); setResultMessage(error.serverMessage || 'No fue posible consultar el directorio.') } })
     }, 250)
     return () => { window.clearTimeout(timer); controller.abort() }
-  }, [apiFetch, page, placeSearch, selectedGiro, view])
+  }, [apiFetch, giroId, hasFilters, municipioId, page, placeSearch])
 
-  useEffect(() => { panelRef.current?.scrollTo({ top: 0, behavior: 'smooth' }) }, [view, selectedCategory, selectedGiro, selectedPlace])
+  useEffect(() => { panelRef.current?.scrollTo({ top: 0, behavior: 'smooth' }) }, [view, selectedPlace])
 
-  const openCategory = (category) => { setSelectedCategory(category); setGiroSearch(''); setView('giros') }
-  const openGiro = (giro) => { setSelectedGiro(giro); setSelectedPlace(null); setPlaceSearch(''); setPage(1); setResults({ rows: [], total: 0, page: 1, pages: 1 }); setView('results') }
   const openDetail = (place) => { setSelectedPlace(place); setView('detail') }
-  const returnToCategories = () => { setSelectedCategory(null); setSelectedGiro(null); setSelectedPlace(null); setView('categories') }
+  const updateGiro = (value) => { setGiroId(value); setPage(1); setSelectedPlace(null); setView(value || municipioId ? 'results' : 'filters'); if (!value && !municipioId) { setResultStatus('idle'); setResults({ rows: [], total: 0, page: 1, pages: 1 }) } }
+  const updateMunicipio = (value) => { setMunicipioId(value); setPage(1); setSelectedPlace(null); setView(value || giroId ? 'results' : 'filters'); if (!value && !giroId) { setResultStatus('idle'); setResults({ rows: [], total: 0, page: 1, pages: 1 }) } }
   const giroIcon = giroIcons[selectedGiro?.id_giro] || '📍'
+  const resultsTitle = selectedGiro ? cleanText(selectedGiro.giro) : selectedMunicipio ? `Establecimientos en ${selectedMunicipio.municipio}` : 'Directorio turístico'
 
   return <main className="public-directory" ref={panelRef}>
     <header className="directory-hero">
@@ -119,26 +133,20 @@ export default function PublicDirectory({ apiFetch, cleanText, giroIcons, onShow
       <nav aria-label="Recursos de ayuda"><button type="button" onClick={() => onShowResource('Manual de usuario')}>Manual de usuario</button><button type="button" onClick={() => onShowResource('Preguntas frecuentes')}>Preguntas frecuentes</button></nav>
     </header>
 
-    {view !== 'categories' && <nav className="directory-breadcrumb" aria-label="Navegación del directorio"><button type="button" onClick={returnToCategories}>Categorías</button>{selectedCategory && <><span>/</span><button type="button" onClick={() => setView('giros')}>{selectedCategory.label}</button></>}{selectedGiro && view !== 'giros' && <><span>/</span><button type="button" onClick={() => setView('results')}>{cleanText(selectedGiro.giro)}</button></>}{view === 'detail' && <><span>/</span><strong>{selectedPlace?.nombre_comercial}</strong></>}</nav>}
+    {view === 'detail' && <nav className="directory-breadcrumb" aria-label="Navegación del directorio"><button type="button" onClick={() => setView('results')}>Resultados</button><span>/</span><strong>{selectedPlace?.nombre_comercial}</strong></nav>}
 
-    {view === 'categories' && <section className="directory-view" aria-labelledby="directory-categories-title">
-      <div className="directory-section-heading"><div><span>Explora por categoría</span><h3 id="directory-categories-title">¿Qué estás buscando?</h3></div><p>Selecciona una categoría para conocer los giros disponibles.</p></div>
-      {catalogStatus === 'loading' && <div className="directory-state"><i className="directory-spinner" /><strong>Cargando categorías…</strong></div>}
-      {catalogStatus === 'error' && <div className="directory-state error"><span>!</span><strong>No pudimos cargar las categorías</strong><p>Actualiza la página para intentar nuevamente.</p></div>}
-      {catalogStatus === 'ready' && <div className="category-grid">{categories.map((category) => <button type="button" className="category-card" style={{ '--category-color': category.color }} onClick={() => openCategory(category)} key={category.id}><span className="category-icon" aria-hidden="true">{category.icon}</span><span><strong>{category.label}</strong><small>{category.description}</small><b>{category.giros.length} {category.giros.length === 1 ? 'giro' : 'giros'}</b></span><i aria-hidden="true">→</i></button>)}</div>}
-    </section>}
+    <section className="directory-filter-panel" aria-labelledby="directory-filter-title">
+      <div className="directory-filter-heading"><span>Directorio turístico RET</span><h3 id="directory-filter-title">Encuentra tu próxima experiencia</h3><p>Selecciona un giro, un municipio o combina ambos filtros.</p></div>
+      <div className="directory-filter-controls">
+        <label><span><b aria-hidden="true">✦</b> Giro</span><select value={giroId} disabled={catalogStatus.giros === 'loading'} onChange={(event) => updateGiro(event.target.value)}><option value="">{catalogStatus.giros === 'loading' ? 'Cargando giros…' : 'Selecciona un giro'}</option>{giros.map((giro) => <option value={giro.id_giro} key={giro.id_giro}>{cleanText(giro.giro)}</option>)}</select>{catalogStatus.giros === 'error' && <small>No fue posible cargar los giros.</small>}</label>
+        <label><span><b aria-hidden="true">⌖</b> Municipio</span><select value={municipioId} disabled={catalogStatus.municipios === 'loading'} onChange={(event) => updateMunicipio(event.target.value)}><option value="">{catalogStatus.municipios === 'loading' ? 'Cargando municipios…' : 'Selecciona un municipio'}</option>{municipios.map((municipio) => <option value={municipio.id_municipio} key={municipio.id_municipio}>{municipio.municipio}</option>)}</select>{catalogStatus.municipios === 'error' && <small>No fue posible cargar los municipios.</small>}</label>
+      </div>
+    </section>
 
-    {view === 'giros' && <section className="directory-view" aria-labelledby="directory-giros-title">
-      <button className="directory-back" type="button" onClick={returnToCategories}>← Volver a categorías</button>
-      <div className="directory-section-heading"><div><span>{selectedCategory?.icon} {selectedCategory?.label}</span><h3 id="directory-giros-title">Selecciona un giro</h3></div><p>Consulta los servicios disponibles dentro de esta categoría.</p></div>
-      <DirectorySearch value={giroSearch} onChange={setGiroSearch} label="Buscar giro" placeholder="Buscar giro o actividad turística…" />
-      <div className="giro-list">{categoryGiros.map((giro) => <button type="button" onClick={() => openGiro(giro)} key={giro.id_giro}><span aria-hidden="true">{giroIcons[giro.id_giro] || selectedCategory?.icon || '📍'}</span><div><strong>{cleanText(giro.giro)}</strong><small>{cleanText(giro.resumen) || 'Consulta establecimientos de este giro.'}</small></div><i aria-hidden="true">→</i></button>)}</div>
-      {!categoryGiros.length && <div className="directory-state"><span aria-hidden="true">⌕</span><strong>No encontramos giros</strong><p>Prueba con otra palabra.</p></div>}
-    </section>}
+    {!hasFilters && view !== 'detail' && <section className="directory-view directory-filter-hero" style={{ backgroundImage: `linear-gradient(110deg, rgba(3,34,62,.86), rgba(3,54,82,.42)), url(${backgroundImage})` }}><div className="directory-filter-copy"><span>Explora Guanajuato</span><h3>Explora los establecimientos turísticos</h3><p>Selecciona al menos un giro o municipio en los filtros superiores para consultar los resultados.</p></div></section>}
 
     {view === 'results' && <section className="directory-view directory-results" aria-labelledby="directory-results-title">
-      <button className="directory-back" type="button" onClick={() => setView('giros')}>← Cambiar giro</button>
-      <div className="directory-section-heading"><div><span>{giroIcon} Directorio turístico</span><h3 id="directory-results-title">{cleanText(selectedGiro?.giro)}</h3></div><p>{results.total.toLocaleString('es-MX')} {results.total === 1 ? 'establecimiento encontrado' : 'establecimientos encontrados'}</p></div>
+      <div className="directory-section-heading"><div><span>{giroIcon} Directorio turístico</span><h3 id="directory-results-title">{resultsTitle}</h3></div><p>{results.total.toLocaleString('es-MX')} {results.total === 1 ? 'establecimiento encontrado' : 'establecimientos encontrados'}</p></div>
       <DirectorySearch value={placeSearch} onChange={(value) => { setPlaceSearch(value); setPage(1) }} label="Buscar establecimiento" placeholder="Buscar por nombre, municipio, colonia o descripción…" />
       {resultStatus === 'loading' && <div className="directory-state"><i className="directory-spinner" /><strong>Buscando establecimientos…</strong></div>}
       {resultStatus === 'error' && <div className="directory-state error"><span>!</span><strong>No fue posible cargar los resultados</strong><p>{resultMessage}</p></div>}
