@@ -136,6 +136,9 @@
 .document-card > label.has-file { border-color: var(--ret-cyan); background: var(--ret-ice); }
 .document-card > a { color: var(--ret-blue); }
 .general-message, .review-summary { background: var(--ret-ice); color: var(--ret-navy); }
+.field .show-password { display: grid; width: 34px; height: 34px; flex: 0 0 auto; padding: 0; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--ret-blue); cursor: pointer; font-size: 18px; line-height: 1; }
+.field .show-password svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
+.field .show-password:hover, .field .show-password:focus-visible { background: var(--ret-ice); outline: 2px solid #00abc833; outline-offset: 1px; }
 
 @media (max-width: 820px) {
   .login-panel { min-height: 100vh; }

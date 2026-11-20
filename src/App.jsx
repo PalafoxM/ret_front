@@ -290,6 +290,7 @@ function LoginPanel({ onLogin, onAdminLogin }) {
   const rememberedAdmin = readRememberedIdentifier(ADMIN_LOGIN_MEMORY_KEY)
   const [message, setMessage] = useState('')
   const [showRegistration, setShowRegistration] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
   const [captchaRequired, setCaptchaRequired] = useState(() => Number(sessionStorage.getItem(RECAPTCHA_SESSION_KEY) || 0) > Date.now())
   const closeRegistration = useCallback(() => setShowRegistration(false), [])
   const recoverPassword = async () => {
@@ -430,7 +431,7 @@ function LoginPanel({ onLogin, onAdminLogin }) {
         <label htmlFor="clave">Clave RET</label>
         <div className="field"><span aria-hidden="true">🔑</span><input id="clave" name="clave" type="text" placeholder="RET01010023" autoComplete="username" defaultValue={rememberedUser} minLength="9" maxLength="17" required /></div>
         <div className="password-row"><label htmlFor="password">Contraseña</label><button className="text-button" type="button" onClick={recoverPassword}>Olvidé mi contraseña</button></div>
-        <div className="field"><span aria-hidden="true">◇</span><input id="password" name="password" type="password" placeholder="Tu contraseña" autoComplete="current-password" required /></div>
+        <div className="field"><span aria-hidden="true">◇</span><input id="password" name="password" type={showPassword ? 'text' : 'password'} placeholder="Tu contraseña" autoComplete="current-password" required /><button className="show-password" type="button" aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'} aria-pressed={showPassword} title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'} onClick={() => setShowPassword((visible) => !visible)}><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="2.75" />{showPassword && <path d="m4 4 16 16" />}</svg></button></div>
         <label className="remember"><input name="remember" type="checkbox" defaultChecked={Boolean(rememberedUser)} /><span>Recordar mis datos de acceso</span></label>
         <button className="primary-button" type="submit">Iniciar sesión <span aria-hidden="true">→</span></button>
         {captchaRequired && <small className="recaptcha-notice">Este acceso está protegido por reCAPTCHA Enterprise.</small>}
